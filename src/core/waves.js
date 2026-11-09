@@ -201,6 +201,9 @@ export function createWaveSystem(game, {
   function updateCreatures(dt) {
     for (let i = creatures.length - 1; i >= 0; i--) {
       const creature = creatures[i]
+      // Une ombre vivante anime son rebond d'impact ici : les morts basculent dans
+      // `dying` et ne reçoivent donc jamais deux appels sur la même image.
+      creature.shadow.update(dt)
       creature.distance = Math.min(creature.distance + creature.speed * dt, totalLength)
 
       let segment = creature.segment

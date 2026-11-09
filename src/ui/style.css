@@ -164,10 +164,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   font-weight: 600; letter-spacing: 0.01em;
 }
 
-/* Compte à rebours : pastille menthe, lisible d'un coup d'œil pendant le répit.
-   La respiration fait varier le fond, jamais l'opacité : le texte garde 4,59:1 à 5,32:1. */
+/* Compte à rebours : pastille menthe dérivée, distincte de la teinte du cœur,
+   lisible d'un coup d'œil pendant le répit.
+   La respiration fait varier le fond, jamais l'opacité : le texte garde 5,9:1 à 6,6:1. */
 .wave-hud__windup {
-  padding: 1px 7px; border-radius: 999px; background: #6ec6b5;
+  padding: 1px 7px; border-radius: 999px; background: #a7d9cc;
   font-size: clamp(0.72rem, 2.8vw, 0.8rem); font-weight: 600;
 }
 .wave-hud__windup[hidden] { display: none; }
@@ -175,8 +176,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   animation: wave-hud-breath 2.4s ease-in-out infinite;
 }
 @keyframes wave-hud-breath {
-  0%, 100% { background-color: #6ec6b5; }
-  50% { background-color: #83d3c2; }
+  0%, 100% { background-color: #a7d9cc; }
+  50% { background-color: #b9e3d8; }
 }
 
 .wave-hud__core {
@@ -192,7 +193,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
 }
 .wave-hud__meter-fill {
   display: block; height: 100%; width: 100%; border-radius: inherit;
-  background: #6ec6b5; transform-origin: left center;
+  background: #a7d9cc; transform-origin: left center;
   transition: width 220ms ease, background-color 220ms ease;
 }
 .wave-hud[data-core='low'] .wave-hud__meter-fill { background: #d96b55; }
@@ -222,7 +223,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
 }
 .end-screen__card::before {
   content: ''; display: block; width: 40px; height: 6px; margin: 0 auto 14px;
-  border-radius: 999px; background: #6ec6b5;
+  border-radius: 999px; background: #a7d9cc;
 }
 .end-screen[data-outcome='defeat'] .end-screen__card::before { background: #d96b55; }
 
@@ -242,11 +243,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   align-items: center; justify-content: center;
   min-width: 44px; min-height: 48px; margin-top: clamp(18px, 5vw, 26px);
   padding: 0 26px; border: 2px solid #3e4a43; border-radius: 0.65rem;
-  background: #6ec6b5; color: #3e4a43;
+  background: #a7d9cc; color: #3e4a43;
   font: inherit; font-size: 1rem; font-weight: 600; line-height: 1;
   cursor: pointer; transition: background-color 160ms ease;
 }
-.end-screen__replay:hover { background: #83d3c2; }
+.end-screen__replay:hover { background: #b9e3d8; }
 .end-screen__replay:focus-visible { outline: 2px solid #3e4a43; outline-offset: 3px; }
 
 @keyframes end-screen-in {
