@@ -1,5 +1,12 @@
 {
   "game.title": "Jeu Three.js",
   "level.1.name": "La Clairière de Sèveclaire",
-  "level.1.hint": "Glisse pour regarder"
+  "level.1.hint": "Glisse pour regarder",
+  "tower.bar.toggle": "Tours",
+  "tower.bar.label": "Tours-plantes",
+  "tower.sprout.name": "Pousse",
+  "tower.bloom.name": "Floraison",
+  "tower.price": "{n} sève",
+  "tower.level": "Niveau {n}",
+  "tower.upgrade": "Améliorer"
 }
