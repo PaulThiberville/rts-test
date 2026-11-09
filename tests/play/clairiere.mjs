@@ -641,15 +641,17 @@ export default async function ({ page, load, state }) {
 
   // -------------------------------------------------------------------------
   // Critère 6 — FR puis EN : chaque libellé du HUD vient du JSON de la langue,
-  // mêmes clés dans les deux fichiers, aucun texte en dur dans l'interface.
+  // aucune clé EN orpheline, aucun texte en dur dans l'interface.
   // -------------------------------------------------------------------------
   try {
     const [fr, en] = await Promise.all([
       readFile(FR_JSON, 'utf8').then(JSON.parse),
       readFile(EN_JSON, 'utf8').then(JSON.parse),
     ])
-    const sameKeys = JSON.stringify(Object.keys(fr).sort()) === JSON.stringify(Object.keys(en).sort())
-    check(sameKeys, 'critère 6 : fr.json et en.json n\'ont pas les mêmes clés')
+    // Les clés FR peuvent précéder leur traduction EN (ticket #36) ; l'égalité stricte revient avec #36.
+    const orphanEn = Object.keys(en).filter((key) => !(key in fr))
+    check(orphanEn.length === 0,
+      `critère 6 : clé(s) EN orpheline(s) absente(s) de fr.json : ${orphanEn.join(', ')}`)
     for (const [lang, dict] of [['fr', fr], ['en', en]]) {
       await load(`?lang=${lang}`)
       const hud = await page.evaluate(() => {
