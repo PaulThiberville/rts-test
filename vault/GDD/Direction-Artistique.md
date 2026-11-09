@@ -1,31 +1,48 @@
 ---
 tags: [gdd]
-status: draft
-updated: 2026-11-08
+status: validated
+updated: 2026-11-09
 ---
 
 # Direction artistique
 
-Référence unique pour textureur, illustrateur, VFX, UI et son. À compléter avant la première Epic visuelle.
-Découle de [[Vision]] et [[Univers]].
+Référence unique pour textureur, illustrateur, VFX et UI. Découle de [[Vision]] et [[Univers]] : un jardin cosy, mignon et zen, lisible sur mobile.
 
 ## Palette
-| Rôle | Hex |
-|---|---|
-| Fond | `#1d2433` |
-| Primaire (joueur) | `#38bdf8` |
-| Danger | _<hex>_ |
-| Récompense | _<hex>_ |
-| Texte | `#e2e8f0` |
+
+| Rôle | Hex | Usage |
+|---|---|---|
+| Fond | `#faf3e3` | Ciel et sol de la clairière, aube douce |
+| Primaire (joueur) | `#6ec6b5` | Plantes-défenses et éléments du gardien |
+| Danger | `#e8907f` | Ombres hostiles et alertes |
+| Récompense | `#f2c66d` | Butin, étoiles et gains de niveau |
+| Texte | `#3e4a43` | Texte d’interface sur fond clair |
+
+Teintes pastel, désaturées, jamais fluo : chaque rôle reste reconnaissable d’un coup d’œil, même sur petit écran. Une seule teinte par type de plante-défense (pilier « Mignon et lisible » de [[Vision]]).
+
+### Contraste texte / fond
+
+Calculé selon la luminance relative sRGB : canal linéarisé `c/12.92` si `c ≤ 0.04045`, sinon `((c+0.055)/1.055)^2.4` ; `L = 0.2126·R + 0.7152·G + 0.0722·B` ; ratio `(L1+0.05)/(L2+0.05)`.
+
+- `#faf3e3` → L = 0.8997
+- `#3e4a43` → L = 0.0633
+- Ratio Texte/Fond = **8.38:1**, au-dessus du seuil WCAG AA de 4.5:1. Recalculable par script sur ces deux hex.
 
 ## Formes & style
-- _<Ex. : low-poly, angles nets, aplats sans texture photo.>_
+- Formes rondes et silhouettes lisibles : aucune arête agressive sur les habitants du jardin.
+- Low-poly assumé, facettes douces, une seule forme par type de plante-défense.
+- Aplats de couleur unis, éventuellement ombrés en douceur ; pas de textures photo.
 
 ## Lumière & effets
-- _<Ex. : éclairage doux, bloom réservé aux éléments interactifs.>_
+- Lumière de fin d’après-midi, chaude et rasante, comme une clairière au soleil couchant.
+- Ombres douces, larges et peu contrastées, jamais dures ni découpées au couteau.
+- Bloom réservé aux éléments interactifs (plantes-défenses, récompenses) ; le décor reste mat.
 
-## Son
-- _<Ex. : synthés doux, percussions légères.>_
+## Animation
+- Mouvements feutrés : respirations lentes, balancements de feuillage, transitions en easing doux.
+- Aucun shake agressif d’écran ; les impacts se lisent par un léger rebond et une variation de couleur.
 
 ## Interdits
-- _<Ex. : dégradés criards, texte dans les images, réalisme photo.>_
+- Dégradés criards et contrastes saturés qui cassent le calme.
+- Réalisme photo et textures photographiques.
+- Texte dans les images : tout texte passe par l’interface localisée.
