@@ -1,3 +1,5 @@
 {
-  "game.title": "Three.js Game"
+  "game.title": "Three.js Game",
+  "level.1.name": "Sèveclaire Clearing",
+  "level.1.hint": "Drag to look around"
 }
