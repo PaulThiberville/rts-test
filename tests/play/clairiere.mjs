@@ -667,7 +667,16 @@ export default async function ({ page, load, state }) {
       check(hud.hint === dict['level.1.hint'],
         `critère 6 : aide ${lang} « ${hud.hint} » ≠ « ${dict['level.1.hint']} »`)
       const values = new Set(Object.values(dict))
-      const hardcoded = hud.texts.filter((text) => !values.has(text))
+      // Une valeur littérale passe telle quelle. Un libellé interpolé (« 40 sève »)
+      // passe s'il suit le gabarit d'une valeur du dictionnaire (« {n} sève »), chaque
+      // jeton {…} étant substitué par un nombre.
+      const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const NUMBER = '-?\\d+(?:[.,]\\d+)?'
+      const templates = [...values]
+        .filter((value) => /\{[^{}]*\}/.test(value))
+        .map((value) => new RegExp(`^${value.split(/\{[^{}]*\}/g).map(escape).join(NUMBER)}$`))
+      const hardcoded = hud.texts.filter((text) =>
+        !values.has(text) && !templates.some((template) => template.test(text)))
       check(hardcoded.length === 0, `critère 6 : texte en dur en ${lang} : ${hardcoded.join(' / ')}`)
     }
     // La boucle vient de terminer sur ?lang=en : capture sans rechargement.
