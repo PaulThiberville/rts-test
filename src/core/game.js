@@ -29,6 +29,27 @@ export function createGame(container) {
   const state = { frames: 0, paused: false }
   let render = () => renderer.render(scene, camera)
 
+  /** Abonnés du bus de jeu, rangés par nom d'événement. */
+  const listeners = new Map()
+
+  /** Abonne `fn` aux événements `name` ; un abonnement invalide est ignoré. */
+  function on(name, fn) {
+    if (typeof name !== 'string' || typeof fn !== 'function') return
+    let set = listeners.get(name)
+    if (!set) {
+      set = new Set()
+      listeners.set(name, set)
+    }
+    set.add(fn)
+  }
+
+  /** Diffuse `payload` aux abonnés de `name` : `'wave-start'`, `'shade-repelled'`… */
+  function emit(name, payload) {
+    const set = listeners.get(name)
+    if (!set) return
+    for (const fn of set) fn(payload)
+  }
+
   function tick(time) {
     timer.update(time)
     const dt = Math.min(timer.getDelta(), 0.1) // évite les sauts après un onglet en arrière-plan
@@ -42,6 +63,8 @@ export function createGame(container) {
     camera,
     renderer,
     state,
+    on,
+    emit,
     add(entity) {
       entities.add(entity)
       scene.add(entity)
