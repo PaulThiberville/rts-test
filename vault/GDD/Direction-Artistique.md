@@ -46,3 +46,28 @@ Calculé selon la luminance relative sRGB : canal linéarisé `c/12.92` si `c �
 - Dégradés criards et contrastes saturés qui cassent le calme.
 - Réalisme photo et textures photographiques.
 - Texte dans les images : tout texte passe par l’interface localisée.
+
+## Son
+
+Ton apaisant comme le reste de la clairière : synthés doux (nappes, cloches feutrées), percussion légère (bois, peaux, pas de batterie sèche). Aucun son ne doit surprendre le joueur en pause. Découle de [[Vision]] : « Sérénité d’abord ».
+
+Trois effets nommés, seuls indispensables au lancement :
+
+| Effet | Rôle | Caractère |
+|---|---|---|
+| « poser une tour » | Confirmer une plante-défense | Cloche douce, une note montante, 200 ms |
+| « vague » | Annoncer l’arrivée des ombres | Nappe descendante discrète, 1 s, sans urgence |
+| « victoire » | Clore un niveau | Trois notes de harpe montantes, récompense calme |
+
+- Volume par défaut : **40 %**, jamais plus de **50 %** à la première ouverture ; le joueur ajuste ensuite.
+- Ambiance de fond coupée par défaut sur mobile ; effets toujours audibles.
+- Un son d’impact ne se répète pas plus de 3 fois par seconde (pas de mitraillette sonore).
+
+## i18n
+
+Deux langues : **FR** (source, rédigé en premier) et **EN** (traduction fidèle du ton, pas du mot à mot). Fichiers `src/i18n/fr.json` et `src/i18n/en.json`, clés identiques.
+
+- **Tutoiement** du joueur en FR : « tu » et « ton jardin », jamais « vous ». Le ton cosy reste celui de [[Univers]], sans jargon militaire.
+- **Libellé de bouton ≤ 20 caractères**, verbe d’abord : « Poser », « Reprendre », « Niveau suivant ».
+- Les noms propres (Sèveclaire, gardien) ne se traduisent pas.
+- Rappel de l’interdit visuel : **aucun texte dans les images**, tout passe par ces fichiers localisés.
