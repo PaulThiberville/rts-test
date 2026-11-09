@@ -1,5 +1,12 @@
 {
   "game.title": "Three.js Game",
   "level.1.name": "Sèveclaire Clearing",
-  "level.1.hint": "Drag to look around"
+  "level.1.hint": "Drag to look around",
+  "tower.bar.toggle": "Towers",
+  "tower.bar.label": "Plant towers",
+  "tower.sprout.name": "Sprout",
+  "tower.bloom.name": "Bloom",
+  "tower.price": "{n} sap",
+  "tower.level": "Level {n}",
+  "tower.upgrade": "Upgrade"
 }

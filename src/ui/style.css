@@ -46,126 +46,92 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   }
 }
 
-/* Barre de tours-plantes : bande compacte ancrée en haut à droite, sous le HUD du niveau.
-   Une seule rangée de 44 px : [liste ou sélection] puis [poignée 60×44 « Tours » + chevron].
-   Fermée, seule la poignée reste, collée au bord droit ; le panneau sort du flux et ne
-   la déplace pas. 16rem au total (192 px de panneau + 4 px d'écart + 60 px de poignée),
-   bornée pour laisser voir le couloir du chemin.
-   `#ui` reste transparente aux pointeurs : seuls les contrôles les capturent. */
+/* Barre de tours-plantes : bande basse de 120×44 ancrée en bas à gauche, sous le cœur, le HUD et hors du ruban du chemin. Le conteneur EST le panneau ; la poignée « Tours » (60×44) flotte 4 px au-dessus et n'agrandit pas son rect. `#ui` reste transparente aux pointeurs : seuls les contrôles les capturent. */
 .tower-bar {
-  position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 72px);
-  right: calc(env(safe-area-inset-right, 0px) + 12px);
-  display: flex; flex-direction: row; align-items: flex-start; gap: 4px;
-  max-width: calc(100vw - 24px);
-  font-size: clamp(0.75rem, 3vw, 0.85rem);
+  position: absolute; left: env(safe-area-inset-left, 0px); bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box; width: 120px; height: 44px;
+  font-size: 0.7rem; /* ≈ 11 px : nom + prix tiennent dans 52-56 px */
   color: #3e4a43; pointer-events: none;
 }
 
-/* 16rem au total, moins la poignée de 60 px et l'écart de 4 px. */
+/* Fermé, le panneau reste en place mais invisible (`inert`) : seule la poignée au-dessus se voit. */
 .tower-bar__panel {
-  box-sizing: border-box;
-  width: min(calc(16rem - 64px), calc(100vw - 88px));
-  display: flex; padding: 4px; border-radius: 0.75rem; background: #faf3e3;
-  box-shadow: 0 8px 24px rgb(62 74 67 / 22%), 0 0 0 1px rgb(62 74 67 / 10%);
-  opacity: 0; visibility: hidden; transform: translateX(8px);
-  transition: opacity 200ms ease, transform 200ms ease, visibility 0s linear 200ms;
+  position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: stretch;
+  gap: 4px; padding: 0 2px; border-radius: 0.6rem; background: #faf3e3;
+  box-shadow: 0 4px 14px rgb(62 74 67 / 22%), 0 0 0 1px rgb(62 74 67 / 10%);
+  opacity: 0; visibility: hidden; transition: opacity 160ms ease, visibility 0s linear 160ms;
 }
-
-/* Fermée, la bande se réduit à la poignée : le panneau quitte le flux à sa gauche,
-   hors de la vue des lecteurs d'écran (`inert` posé par le composant). */
-.tower-bar[data-open='false'] .tower-bar__panel {
-  position: absolute; top: 0; right: calc(100% + 4px);
-  width: min(calc(16rem - 64px), calc(100vw - 88px));
-}
-
 .tower-bar[data-open='true'] .tower-bar__panel {
-  opacity: 1; visibility: visible; transform: none;
-  transition: opacity 200ms ease, transform 200ms ease;
+  opacity: 1; visibility: visible; transition: opacity 160ms ease;
 }
-
 .tower-bar__list { display: flex; flex: 1 1 auto; gap: 4px; min-width: 0; }
 .tower-bar__list[hidden], .tower-bar__selection[hidden] { display: none; }
 
 .tower-bar__entry {
-  pointer-events: auto; flex: 1 1 0; min-width: 0;
+  pointer-events: auto; flex: 1 1 0; min-width: 0; box-sizing: border-box;
   display: flex; flex-direction: column; justify-content: center; gap: 1px;
-  min-height: 44px; margin: 0; padding: 3px 5px;
-  border: 1.5px solid rgb(62 74 67 / 35%); border-radius: 0.55rem;
-  background: transparent; color: #3e4a43; font: inherit; line-height: 1.12; text-align: left;
-  cursor: pointer; transition: background-color 180ms ease, border-color 180ms ease;
+  min-height: 44px; margin: 0; padding: 2px 1px; border: 1px solid rgb(62 74 67 / 35%);
+  border-radius: 0.45rem; background: transparent; color: #3e4a43;
+  font: inherit; line-height: 1.08; text-align: left; cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
 }
-
 .tower-bar__entry:hover { background: rgb(110 198 181 / 18%); }
 .tower-bar__entry[aria-pressed='true'] { border-color: #3e4a43; background: #6ec6b5; }
-.tower-bar__entry-name { font-weight: 600; font-size: 1em; overflow-wrap: anywhere; }
-.tower-bar__entry-cost { font-size: 0.92em; line-height: 1.2; }
+/* « Floraison » doit tenir sur une ligne dans ≈ 52 px de zone texte (FR, 360 px). */
+.tower-bar__entry-name {
+  font-weight: 600; font-size: 1em; letter-spacing: -0.015em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tower-bar__entry-cost { font-size: 0.9em; line-height: 1.15; white-space: nowrap; }
 
-/* Sélection : niveau et prix empilés à gauche, bouton d'amélioration à droite,
-   le tout sur la même rangée de 44 px pour ne pas croiser le cœur du niveau. */
+/* Sélection : niveau et prix à gauche, bouton d'amélioration ≥ 44×44 à droite, même rangée. */
 .tower-bar__selection {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px;
   flex: 1 1 auto; min-width: 0;
 }
-
 .tower-bar__info {
-  min-width: 0;
-  display: flex; flex-direction: column; gap: 1px;
-  font-size: 0.95em; line-height: 1.2;
+  min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 1em; line-height: 1.08;
 }
-
 .tower-bar__level { font-weight: 600; }
-
+.tower-bar__price { font-size: 0.9em; }
 .tower-bar__upgrade {
-  pointer-events: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 0 7px;
-  border: 1.5px solid #3e4a43; border-radius: 0.55rem; background: #6ec6b5;
-  color: #3e4a43; font: inherit; font-size: 1em; font-weight: 600; white-space: nowrap; cursor: pointer;
-  transition: background-color 180ms ease, opacity 180ms ease;
+  pointer-events: auto; box-sizing: border-box; min-width: 44px; min-height: 44px; margin: 0;
+  padding: 0 2px; border: 1.5px solid #3e4a43; border-radius: 0.45rem; background: #6ec6b5;
+  color: #3e4a43; font: inherit; font-size: 0.85em; font-weight: 600; line-height: 1.05;
+  cursor: pointer; transition: background-color 160ms ease, opacity 160ms ease;
 }
-
 .tower-bar__upgrade:hover:not(:disabled) { background: #83d3c2; }
 .tower-bar__upgrade:disabled {
-  border-color: rgb(62 74 67 / 45%); background: #e9e2d2;
-  color: #3e4a43; opacity: 0.75; cursor: not-allowed;
+  border-color: rgb(62 74 67 / 45%); background: #e9e2d2; color: #3e4a43;
+  opacity: 0.8; cursor: not-allowed;
 }
 
+/* Poignée 60×44 au-dessus du panneau : chevron CSS + libellé toujours visible. */
 .tower-bar__handle {
-  pointer-events: auto; flex: 0 0 auto; position: relative;
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  width: 60px; min-width: 60px; height: 44px; margin: 0; padding: 0 5px;
+  pointer-events: auto; position: absolute; left: 0; bottom: calc(100% + 4px); box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  width: 60px; height: 44px; margin: 0; padding: 0 4px;
   border: 1.5px solid #3e4a43; border-radius: 0.55rem; background: #faf3e3;
   color: #3e4a43; font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
-  box-shadow: 0 3px 12px rgb(62 74 67 / 18%);
-  transition: background-color 180ms ease;
+  box-shadow: 0 3px 12px rgb(62 74 67 / 18%); transition: background-color 160ms ease;
 }
-
-/* Libellé « Tours » visible à côté du chevron : la poignée se lit sans survol. */
 .tower-bar__handle-label {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.95em; line-height: 1.1;
 }
-
-/* Chevron seul : fermée, il pointe vers le panneau à gauche ; ouverte, vers la droite. */
+/* Chevron : fermée, il pointe vers le bas (le panneau s'ouvrira dessous) ; ouverte, vers le haut. */
 .tower-bar__handle::after {
-  content: ''; flex: 0 0 auto; width: 0.45em; height: 0.45em;
+  content: ''; flex: 0 0 auto; box-sizing: border-box; width: 0.42em; height: 0.42em;
   border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
-  transform: rotate(135deg); transition: transform 200ms ease;
+  transform: rotate(45deg); transition: transform 160ms ease;
 }
-
-.tower-bar[data-open='true'] .tower-bar__handle::after { transform: rotate(-45deg); }
+.tower-bar[data-open='true'] .tower-bar__handle::after { transform: rotate(225deg); }
 .tower-bar__handle:hover { background: #f2ead8; }
 
-.tower-bar__handle:focus-visible,
-.tower-bar__entry:focus-visible,
-.tower-bar__upgrade:focus-visible {
-  outline: 2px solid #3e4a43;
-  outline-offset: 2px;
-}
-
+/* Anneau à l'extérieur de l'entrée : 52 px de zone texte ne tolèrent pas un contour rentrant. */
+.tower-bar__entry:focus-visible { outline: 2px solid #3e4a43; outline-offset: 1px; }
+.tower-bar__upgrade:focus-visible,
+.tower-bar__handle:focus-visible { outline: 2px solid #3e4a43; outline-offset: -3px; }
 @media (prefers-reduced-motion: reduce) {
-  .tower-bar__panel,
-  .tower-bar__entry,
-  .tower-bar__upgrade,
-  .tower-bar__handle { transition: none; }
-
-  .tower-bar__handle::after { transition: none; }
+  .tower-bar[data-open] .tower-bar__panel, .tower-bar__entry, .tower-bar__upgrade,
+  .tower-bar__handle, .tower-bar__handle::after { transition: none; }
 }
