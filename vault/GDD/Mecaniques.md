@@ -10,11 +10,23 @@ Boucle de jeu et contrôles réellement livrés. Découle de [[Vision]] ; le cad
 
 ## Chargement
 
-Le niveau 1 se charge directement au lancement (`src/main.js`), sans menu ni écran titre : la clairière, son HUD et la caméra sont prêts dès le premier rendu.
+Au lancement, l'accueil s'affiche avant la clairière (`src/main.js`) : aucun décor 3D, HUD ni barre des tours n'est monté tant qu'un niveau n'est pas lancé. La boucle de rendu tourne quand même, sans niveau.
+
+Parcours : accueil → campagne → jardin → difficulté → niveau. « Retour » depuis la liste des jardins comme depuis le niveau ramène à l'accueil **sans rechargement de page** : le niveau est détruit, la progression locale reste intacte et le compteur d'images continue de croître.
+
+L'URL accepte `?niveau=<levelId>` pour démarrer directement sur un niveau, accueil ignoré, et `?difficulty=<easy|medium|hard>` pour présélectionner le rythme.
+
+## Accueil et difficultés
+
+- 3 cartes de campagne, dans cet ordre : La Clairière de Sèveclaire (ouvrable), Les Brumes douces et La Rive lente (toutes deux « Bientôt disponible »). Un clic sur une carte indisponible ne change ni l'écran ni l'état, et le badge reste affiché.
+- La campagne principale ouvre ses 6 jardins nommés ; seul le premier est ouvert au premier lancement, chaque jardin terminé débloque le suivant.
+- La difficulté se choisit sur la liste des jardins, avant « Commencer » : le multiplicateur de vagues vaut **0,75** (facile), **1** (moyen) ou **1,5** (difficile). Il module le rythme des vagues du niveau, jamais le déblocage.
+- Terminer un niveau écrit son id dans `localStorage`, clé `seveclaire.progress.v1`, au format `{ version: 1, completed: ["niveau-1", …] }` : ids uniques, ordre d'arrivée conservé. Clé absente, JSON corrompu ou stockage indisponible valent progression vide, sans erreur visible.
+- Noms de jardins et valeurs exactes : [[Campagnes-et-Difficultes]].
 
 ## Boucle principale
 
-Livré aujourd'hui : la clairière se charge, le joueur en fait le tour à la caméra, ouvre la barre des tours-plantes, choisit une graine et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore.
+Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, ouvre la barre des tours-plantes, choisit une graine et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore.
 
 ## Tours-plantes
 
