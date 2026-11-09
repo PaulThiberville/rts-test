@@ -259,3 +259,153 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   .wave-hud[data-phase='countdown'] .wave-hud__windup { animation: none; }
   .wave-hud__meter-fill, .end-screen__replay { transition: none; }
 }
+
+/* Écran d'accueil : voile plein cadre au-dessus du canvas, trois cartes de campagne.
+   Palette crème/menthe/sable de la DA, aucune image externe. */
+.home {
+  position: fixed; inset: 0; z-index: 20;
+  box-sizing: border-box; display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top, 0px) + clamp(16px, 5vw, 40px))
+    calc(env(safe-area-inset-right, 0px) + clamp(14px, 4vw, 32px))
+    calc(env(safe-area-inset-bottom, 0px) + clamp(16px, 5vw, 40px))
+    calc(env(safe-area-inset-left, 0px) + clamp(14px, 4vw, 32px));
+  overflow-x: hidden; overflow-y: auto;
+  color: #3e4a43; pointer-events: auto;
+  background:
+    radial-gradient(80rem 40rem at 12% -10%, rgb(110 198 181 / 22%), transparent 60%),
+    radial-gradient(70rem 36rem at 92% 110%, rgb(242 198 109 / 18%), transparent 55%),
+    linear-gradient(180deg, #faf3e3 0%, #f4f2e6 55%, #e9f2ec 100%);
+  animation: home-in 300ms ease both;
+}
+
+/* `margin: auto` centre quand l'écran est haut et laisse défiler sans rogner quand il est court. */
+.home__inner {
+  box-sizing: border-box; width: min(64rem, 100%); margin: auto;
+  display: flex; flex-direction: column; gap: clamp(18px, 4vw, 34px);
+}
+
+.home__header { text-align: center; }
+
+/* Pousse dessinée en CSS (aucune image) : deux feuilles menthe et une tige, au-dessus du titre. */
+.home__mark {
+  position: relative; display: block; width: 46px; height: 40px; margin: 0 auto 10px;
+  background: linear-gradient(#3e4a43, #3e4a43) center bottom / 3px 22px no-repeat;
+}
+.home__mark::before,
+.home__mark::after {
+  content: ''; position: absolute; top: 6px; width: 21px; height: 15px;
+  background: #6ec6b5;
+}
+.home__mark::before { left: 1px; border-radius: 15px 2px 15px 2px; transform: rotate(-24deg); }
+.home__mark::after {
+  right: 1px; border-radius: 2px 15px 2px 15px;
+  background: #83d3c2; transform: rotate(24deg);
+}
+
+.home__title {
+  margin: 0; font-size: clamp(1.55rem, 7vw, 2.4rem); font-weight: 700;
+  line-height: 1.15; letter-spacing: 0.01em;
+}
+
+.home__subtitle {
+  margin: 0.45em 0 0; font-size: clamp(0.95rem, 3.6vw, 1.08rem);
+  line-height: 1.4; color: #4b574f;
+}
+
+/* Une seule colonne sous ≈ 600 px : la largeur minimale des cartes vaut 17rem. */
+.home__list {
+  display: grid; align-items: stretch; gap: clamp(14px, 3vw, 22px);
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+}
+
+.campaign-card {
+  --card-accent: #6ec6b5;
+  --card-surface: #fdf8ec;
+  position: relative; box-sizing: border-box; overflow: hidden;
+  display: flex; flex-direction: column; gap: 0.55em;
+  min-width: 0;
+  padding: clamp(1.15rem, 3.6vw, 1.4rem) clamp(1rem, 3.4vw, 1.35rem)
+    clamp(1rem, 3.2vw, 1.2rem);
+  border-radius: 1.25rem; background: var(--card-surface);
+  box-shadow: 0 12px 30px rgb(62 74 67 / 12%), 0 0 0 1px rgb(62 74 67 / 8%);
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+/* Liseré de campagne : menthe (jouable), lavande et sable (à venir). */
+.campaign-card::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 6px;
+  background: var(--card-accent);
+}
+
+.campaign-card[data-campaign='seveclaire'] { --card-accent: #6ec6b5; --card-surface: #eef8f3; }
+.campaign-card[data-campaign='brumes'] { --card-accent: #b8b4d8; --card-surface: #f0eff8; }
+.campaign-card[data-campaign='rive'] { --card-accent: #f2c66d; --card-surface: #fdf5e4; }
+
+/* Verrouillée : surface crème éteinte, liseré neutre, aucun survol. */
+.campaign-card.is-soon { --card-accent: #d5cfbf; --card-surface: #f1ecdf; }
+.campaign-card.is-soon[data-campaign='brumes'] { --card-accent: #c9c4e0; }
+.campaign-card.is-soon[data-campaign='rive'] { --card-accent: #e8d3a4; }
+
+.campaign-card__name {
+  margin: 0.35em 0 0; font-size: clamp(1.05rem, 4vw, 1.22rem); font-weight: 700;
+  line-height: 1.25; overflow-wrap: break-word;
+}
+.campaign-card.is-soon .campaign-card__name { color: #4b574f; }
+
+.campaign-card__desc {
+  margin: 0; font-size: clamp(0.9rem, 3.2vw, 0.97rem);
+  line-height: 1.45; color: #4b574f; overflow-wrap: break-word;
+}
+
+.campaign-card__levels {
+  margin: 0; font-size: clamp(12px, 2.9vw, 0.84rem);
+  line-height: 1.3; color: #4b574f; font-variant-numeric: tabular-nums;
+}
+
+/* Pied de carte aligné en bas : les cartes d'une même rangée gardent la même hauteur d'action. */
+.campaign-card__footer {
+  display: flex; align-items: center; margin-top: auto; padding-top: 0.45em;
+}
+
+.campaign-card__open {
+  pointer-events: auto; box-sizing: border-box; width: 100%;
+  min-height: 44px; margin: 0; padding: 0 1.1rem;
+  border: 1.5px solid #3e4a43; border-radius: 0.7rem;
+  background: #6ec6b5; color: #3e4a43;
+  font: inherit; font-size: 0.95rem; font-weight: 600; line-height: 1;
+  cursor: pointer; transition: background-color 160ms ease;
+}
+.campaign-card__open:hover { background: #83d3c2; }
+.campaign-card__open:active { background: #5fb9a8; }
+.campaign-card__open:focus-visible { outline: 2px solid #3e4a43; outline-offset: 2px; }
+
+/* Pastille sombre : 8,38:1 avec le crème, lisible dès 12 px sur les deux cartes verrouillées. */
+.campaign-card__badge {
+  display: inline-flex; align-items: center; min-height: 28px;
+  padding: 0.25em 0.7em; border-radius: 999px;
+  background: #3e4a43; color: #faf3e3;
+  font-size: clamp(12px, 2.9vw, 0.8rem); font-weight: 600;
+  line-height: 1.2; letter-spacing: 0.01em; white-space: nowrap;
+}
+
+/* Campagne commencée : barre menthe à gauche, distincte de l'anneau de survol. */
+.campaign-card.is-progressed {
+  box-shadow: inset 5px 0 0 #6ec6b5, 0 12px 30px rgb(62 74 67 / 12%);
+}
+
+@media (hover: hover) {
+  .campaign-card[data-available='true']:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 2px #6ec6b5, 0 16px 34px rgb(62 74 67 / 16%);
+  }
+}
+
+@keyframes home-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home { animation: none; }
+  .campaign-card, .campaign-card__open { transition: none; }
+}
