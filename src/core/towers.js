@@ -28,7 +28,7 @@ const GHOST_SPEED = 2.2
  * l'événement : le glissement de caméra de `camera-rig.js` reste intact.
  * @param {{ scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void }} game
  * @param {{ level?: object, towers?: object, onChange?: (state: object) => void }} [options]
- * @returns {{ group: THREE.Group, update(dt: number): void, selectType(type: string | null): void, toggleBar(open?: boolean): void, place(slotId?: string): boolean, upgrade(towerId?: number): boolean, dispose(): void }}
+ * @returns {{ group: THREE.Group, update(dt: number): void, selectType(type: string | null): void, toggleBar(open?: boolean): void, place(slotId?: string): boolean, upgrade(towerId?: number): boolean, reset(): void, dispose(): void }}
  */
 export function createTowerSystem(game, {
   level = LEVEL_1,
@@ -223,6 +223,7 @@ export function createTowerSystem(game, {
       slotId: slot.id,
       x: slot.x,
       z: slot.z,
+      shots: 0,
     }
     slot.occupied = true
     slot.towerId = record.id
@@ -355,6 +356,43 @@ export function createTowerSystem(game, {
     return true
   }
 
+  /**
+   * Réinitialise la partie sans toucher au décor ni aux marqueurs : toutes les tours
+   * posées sont retirées et libérées, les emplacements redeviennent libres, la sève
+   * revient au montant de départ et toute sélection est effacée. Notifie `onChange`.
+   */
+  function reset() {
+    for (let i = 0; i < towerObjects.length; i++) {
+      const object = towerObjects[i]
+      group.remove(object)
+      disposeTower(object)
+    }
+    towerObjects.length = 0
+    towersById.clear()
+    towerByObject.clear()
+    objectsById.clear()
+    state.towers.length = 0
+    state.resources = level.startingResources
+    state.selectedTower = null
+    state.hoveredSlot = null
+    state.towerBar.selectedType = null
+    state.ghost.visible = false
+    state.ghost.slotId = null
+    state.ghost.type = null
+    state.lastAction = null
+    state.lastRefusal = null
+    selectionMarker.visible = false
+    nextTowerId = 1
+    pressId = null
+    for (const slot of state.slots) {
+      slot.occupied = false
+      slot.towerId = null
+    }
+    refreshGhost()
+    dirty = false
+    onChange(state)
+  }
+
   function dispose() {
     domElement.removeEventListener('pointerdown', onPointerDown)
     domElement.removeEventListener('pointermove', onPointerMove)
@@ -378,5 +416,5 @@ export function createTowerSystem(game, {
     group.clear()
   }
 
-  return { group, update, selectType, toggleBar, place, upgrade, dispose }
+  return { group, update, selectType, toggleBar, place, upgrade, reset, dispose }
 }
