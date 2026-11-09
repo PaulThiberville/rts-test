@@ -49,19 +49,23 @@ Calculé selon la luminance relative sRGB : canal linéarisé `c/12.92` si `c �
 
 ## Son
 
-Ton apaisant comme le reste de la clairière : synthés doux (nappes, cloches feutrées), percussion légère (bois, peaux, pas de batterie sèche). Aucun son ne doit surprendre le joueur en pause. Découle de [[Vision]] : « Sérénité d’abord ».
+Ton apaisant comme le reste de la clairière : synthés doux (nappes, cloches feutrées), percussion légère (bois, peaux, pas de batterie sèche). Aucun son ne doit surprendre le joueur en pause. Découle de [[Vision]] : « Sérénité d’abord », et ne sonorise que les gestes de [[Mecaniques]].
 
-Trois effets nommés, seuls indispensables au lancement :
+Trois effets à livrer pour l’Epic #48, plus « victoire » déjà validée :
 
 | Effet | Rôle | Caractère |
 |---|---|---|
-| « poser une tour » | Confirmer une plante-défense | Cloche douce, une note montante, 200 ms |
+| « poser une plante-défense » (« poser une tour ») | Confirmer la pose d’une tour-plante | Cloche douce, une note montante, 200 ms |
 | « vague » | Annoncer l’arrivée des ombres | Nappe descendante discrète, 1 s, sans urgence |
+| « ombre repoussée » | Confirmer qu’une ombre recule | Cloche feutrée, durée ≤ 1 s, aucune urgence |
 | « victoire » | Clore un niveau | Trois notes de harpe montantes, récompense calme |
 
-- Volume par défaut : **40 %**, jamais plus de **50 %** à la première ouverture ; le joueur ajuste ensuite.
-- Ambiance de fond coupée par défaut sur mobile ; effets toujours audibles.
-- Un son d’impact ne se répète pas plus de 3 fois par seconde (pas de mitraillette sonore).
+- Volume par défaut : 40 %, jamais plus de 50 % à la première ouverture ; le joueur ajuste ensuite.
+- Règle des impacts : ≤ 3 fois par seconde, pas de mitraillette sonore.
+
+### Silence et muet
+
+Le bouton muet est atteignable au clavier (Tab puis Entrée ou Espace) et porte un libellé localisé. Muet, le gain master tombe à zéro et le jeu laisse place au silence, compris comme le jardin qui respire : aucune nappe, aucun effet. Un second appui rétablit exactement le volume précédent. Sur mobile, l’ambiance de fond est coupée par défaut ; les effets restent audibles tant que le joueur ne coupe pas le son.
 
 ## i18n
 
