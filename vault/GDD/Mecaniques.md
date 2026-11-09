@@ -1,12 +1,12 @@
 ---
 tags: [gdd]
-status: validated
+status: draft
 updated: 2026-11-09
 ---
 
 # Mécaniques
 
-Boucle de jeu et contrôles réellement livrés. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
+Boucle de jeu et contrôles : le livré d'aujourd'hui, puis le contrat de #60/#58 signalé comme tel. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
 
 ## Chargement
 
@@ -26,7 +26,7 @@ L'URL accepte `?niveau=<levelId>` pour démarrer directement sur un niveau, accu
 
 ## Boucle principale
 
-Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, ouvre la barre des tours-plantes, choisit une graine et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore.
+Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, ouvre la barre des tours-plantes, choisit une graine et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore. Les vagues montent ensuite d'elles-mêmes : 8 s de répit, 6 vagues d'ombres apparues une à une depuis l'entrée sud et qui suivent le chemin, tir automatique des tours-plantes sans aucun clic, cœur à 12 PV. La partie s'achève sur une victoire calme ou une défaite sans punition, avec la vague atteinte et la durée ; « Rejouer » relance aussitôt, sans confirmation. Valeurs détaillées dans « Les petites ombres ».
 
 ## Tours-plantes
 
@@ -46,6 +46,47 @@ La barre démarre fermée et se bascule avec la poignée « Tours », en bas à 
 - Un clic sur une tour posée la sélectionne ; un marqueur au sol la désigne. Un clic hors d'une tour efface la sélection.
 - « Améliorer » fait passer la tour du niveau 1 au niveau 2 et débite son prix ; le bouton reste inactif quand la sève manque ou que le niveau 2 est atteint.
 
+## Les petites ombres
+
+Contrat des tickets #60 (vagues, tir automatique, cœur) et #58 (écran de fin) : `src/core/waves.js` n'existe pas encore dans cette branche, rien de ce qui suit n'y est livré tant que #60 n'est pas mergé. Seules les valeurs existent, dans `src/data/level-1.js`. La silhouette ronde des ombres vient de [[Direction-Artistique]], le ton « victoire calme, défaite sans punition » de [[Vision]].
+
+### Vagues
+
+Huit secondes de répit (`windup`) avant la vague 1, puis les six entrées de `waves` s'enchaînent dans l'ordre. Une ombre apparaît à la fois depuis `arrival`, l'entrée sud du chemin (x 0, z 11) ; toutes marchent le long de la polyligne `path.points`, sans jamais en sortir.
+
+| Vague | Ombres | PV par ombre | Vitesse (m/s) | Espacement (s) |
+|---|---|---|---|---|
+| 1 | 4 | 6 | 0,45 | 2,4 |
+| 2 | 4 | 7 | 0,47 | 2,2 |
+| 3 | 5 | 7 | 0,49 | 2,0 |
+| 4 | 5 | 8 | 0,51 | 1,8 |
+| 5 | 6 | 8 | 0,53 | 1,6 |
+| 6 | 7 | 8 | 0,55 | 1,4 |
+
+- `count` (ombres), `hp` (PV par ombre), `speed` (m/s) et `gap` (s entre deux apparitions) de chaque entrée de `waves` ; jamais recopiés dans le code.
+
+### Tir automatique
+
+| Tour | Portée | Cadence | Dégâts par tir |
+|---|---|---|---|
+| Pousse (`sprout`) | 3,8 m | 1,0 s | 2 PV |
+| Floraison (`bloom`) | 3,8 m | 1,0 s | 4 PV |
+
+- `combat.range` et `combat.cadence` sont communes aux deux tours ; `combat.damage[type]` donne les dégâts de chaque type.
+- À chaque tir, chaque tour posée vise l'ombre non morte la plus avancée à ≤ `combat.range` et lui retire `combat.damage[type]`.
+- Zéro clic : le joueur ne commande jamais le tir, il choisit seulement où poser et quoi améliorer.
+- Une ombre à 0 PV est retirée de la scène.
+
+### Cœur et fin de partie
+
+- Le cœur a 12 PV (`heart.hp`, vie maximale) et `heart.damage` = 1 : chaque ombre qui l'atteint coûte exactement 1 PV et disparaît.
+- Victoire quand la dernière ombre de la vague 6 est abattue ; défaite quand la vie du cœur tombe à 0. Une seule fin par partie.
+- L'écran de fin affiche la vague atteinte et la durée de la partie ; « Rejouer » remet le niveau à son état de départ — cœur plein, 120 sève, emplacements libres, vague 1 — sans confirmation ni pénalité.
+
+### Réglage
+
+Toutes ces valeurs se règlent dans `src/data/level-1.js` (`windup`, `waves`, `heart`, `combat`, `arrival`) ; le `src/core/waves.js` du contrat #60 les importera et n'en portera aucune en dur.
+
 ## Contrôles
 
 | Action | Souris | Tactile |
@@ -56,7 +97,10 @@ La barre démarre fermée et se bascule avec la poignée « Tours », en bas à 
 | Poser une tour | clic sur un emplacement libre | toucher un emplacement libre |
 | Sélectionner une tour | clic sur la tour posée | toucher la tour posée |
 | Améliorer une tour | clic sur « Améliorer » | toucher « Améliorer » |
+| Rejouer | clic sur « Rejouer » | toucher « Rejouer » |
 
+- Le tir est automatique : aucune commande de tir, ni souris ni tactile.
+- « Rejouer » et l'écran de fin arrivent avec #58/#60 ; les autres lignes du tableau sont livrées.
 - La caméra ne change pas : choisir, poser, sélectionner et améliorer sont des appuis sur place. Un déplacement de plus de 6 px entre l'appui et le relâchement reste un glissement de caméra, jamais une pose.
 - Aucun clavier livré : ni ZQSD, ni flèches, ni raccourcis. Le clavier annoncé dans le cadre de [[Vision]] reste un objectif, pas un contrôle disponible aujourd'hui.
 - Aucun zoom imposé : molette et pincement ne changent pas la distance de caméra.
