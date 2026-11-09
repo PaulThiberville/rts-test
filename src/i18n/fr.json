@@ -8,5 +8,13 @@
   "tower.bloom.name": "Floraison",
   "tower.price": "{n} sève",
   "tower.level": "Niveau {n}",
-  "tower.upgrade": "Améliorer"
+  "tower.upgrade": "Améliorer",
+  "wave.label": "Vague {n}/{total}",
+  "wave.windup": "dans {s} s",
+  "core.hp": "Cœur {hp}/{max}",
+  "end.victory": "Victoire",
+  "end.defeat": "Défaite",
+  "end.wave": "Vague {n}/{total}",
+  "end.time": "Temps : {time}",
+  "end.replay": "Rejouer"
 }
