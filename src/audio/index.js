@@ -1,5 +1,5 @@
 import { createEngine } from './engine.js'
-import { createVoices, EFFECT_NAMES } from './voices.js'
+import { createVoices, EFFECT_NAMES, LEGACY_EFFECT_NAMES, VOICE_FAMILIES } from './voices.js'
 
 /** Nombre maximal de déclenchements d'un même effet par fenêtre glissante. */
 const RATE_LIMIT = 3
@@ -14,13 +14,16 @@ function nowMs() {
  * Point d'entrée audio du jeu, sans asset : tout est synthétisé.
  * `createAudio()` ne touche pas au matériel ; `unlock()` doit être branché par
  * `main.js` sur le premier `pointerdown`/`keydown`, puis `startAmbience()`.
+ * `resume()` sert au retour d'onglet : aucun geste requis, contexte jamais recréé.
  * @param {{ volume?: number, storageKey?: string }} [options]
- * @returns {{ unlock(): Promise<boolean>, startAmbience(): boolean, stopAmbience(): boolean, play(name: string): boolean, setMuted(next: unknown): boolean, toggleMute(): boolean, setVolume(v: unknown): number, getSnapshot(): { contextState: AudioContextState | 'suspended', masterGain: number, volume: number, muted: boolean, ambienceRunning: boolean, lastEffect: { name: string, at: number } | null, effectCount: number } }}
+ * @returns {{ unlock(): Promise<boolean>, resume(): Promise<boolean>, startAmbience(): boolean, stopAmbience(): boolean, play(name: string): boolean, setMuted(next: unknown): boolean, toggleMute(): boolean, setVolume(v: unknown): number, getSnapshot(): { contextState: AudioContextState | 'suspended', masterGain: number, volume: number, muted: boolean, ambienceRunning: boolean, lastEffect: { name: string, at: number } | null, effectCount: number, played: string[], resumeCount: number, families: Record<string, 'bell' | 'pad' | 'wood'> } }}
  */
 export function createAudio({ volume = 0.4, storageKey = 'clairiere.audio.volume' } = {}) {
   const engine = createEngine({ volume, storageKey })
   /** Déclenchements acceptés par effet, pour la fenêtre glissante de 1 s. */
   const triggers = new Map()
+  /** Noms distincts effectivement joués depuis le chargement, dans l'ordre d'apparition. */
+  const played = new Set()
   let voices = null
   let lastEffect = null
   let effectCount = 0
@@ -51,6 +54,10 @@ export function createAudio({ volume = 0.4, storageKey = 'clairiere.audio.volume
     return engine.unlock()
   }
 
+  function resume() {
+    return engine.resume()
+  }
+
   function startAmbience() {
     const instance = ensureVoices()
     return instance ? instance.start() : false
@@ -61,20 +68,24 @@ export function createAudio({ volume = 0.4, storageKey = 'clairiere.audio.volume
   }
 
   function play(name) {
-    if (typeof name !== 'string' || !EFFECT_NAMES.includes(name)) return false
+    if (typeof name !== 'string') return false
+    // Alias de l'Epic #48 (« repelled ») : même voix que `kill`, jamais un dixième effet.
+    const canonical = LEGACY_EFFECT_NAMES[name] ?? name
+    if (!EFFECT_NAMES.includes(canonical)) return false
     const instance = ensureVoices()
     if (!instance) return false
-    if (!accept(name)) return false
+    if (!accept(canonical)) return false
     // Le contrat public renvoie un booléen et ne lève jamais : une erreur Web Audio
     // doit être absorbée ici plutôt que de casser la frame de jeu de l'appelant.
-    let played = false
+    let playedNow = false
     try {
-      played = instance.play(name) === true
+      playedNow = instance.play(canonical) === true
     } catch {
-      played = false
+      playedNow = false
     }
-    if (!played) return false
+    if (!playedNow) return false
     effectCount += 1
+    played.add(canonical)
     lastEffect = { name, at: Date.now() }
     return true
   }
@@ -100,11 +111,15 @@ export function createAudio({ volume = 0.4, storageKey = 'clairiere.audio.volume
       ambienceRunning: voices ? voices.ambienceRunning : false,
       lastEffect: lastEffect ? { name: lastEffect.name, at: lastEffect.at } : null,
       effectCount,
+      played: [...played],
+      resumeCount: engine.resumeCount,
+      families: { ...VOICE_FAMILIES },
     }
   }
 
   return {
     unlock,
+    resume,
     startAmbience,
     stopAmbience,
     play,

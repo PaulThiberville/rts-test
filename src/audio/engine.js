@@ -2,12 +2,13 @@
  * Moteur audio : AudioContext paresseux, gain maître, mute et persistance du volume.
  * Aucun nœud n'existe avant `unlock()` : les règles d'autoplay sont respectées et
  * `getSnapshot()` renvoie `suspended` / gain 0 tant que le joueur n'a pas agi.
+ * `resume()` réveille le contexte au retour d'onglet sans jamais le recréer.
  */
 const MIN_VOLUME = 0
 const MAX_VOLUME = 1
 
-/** Écart maximal toléré entre le gain mesuré avant mute et celui restauré. */
-const UNMUTE_TOLERANCE = 1e-6
+/** Écart maximal toléré entre le gain mesuré avant mute et celui restauré (ticket ±0,01). */
+const UNMUTE_TOLERANCE = 0.01
 
 /** Ramène un volume quelconque dans [0, 1]. */
 function clampVolume(value) {
@@ -72,7 +73,7 @@ function storeVolume(storageKey, value) {
 
 /**
  * @param {{ volume?: number, storageKey?: string }} [options]
- * @returns {{ unlock(): Promise<boolean>, setMuted(next: unknown): boolean, toggleMute(): boolean, setVolume(next: unknown): number, get context(): AudioContext | null, get master(): GainNode | null, get state(): AudioContextState | 'suspended', get masterGain(): number, get volume(): number, get muted(): boolean }}
+ * @returns {{ unlock(): Promise<boolean>, resume(): Promise<boolean>, setMuted(next: unknown): boolean, toggleMute(): boolean, setVolume(next: unknown): number, get context(): AudioContext | null, get master(): GainNode | null, get state(): AudioContextState | 'suspended', get masterGain(): number, get volume(): number, get muted(): boolean, get resumeCount(): number }}
  */
 export function createEngine({ volume = 0.4, storageKey = 'clairiere.audio.volume' } = {}) {
   const stored = readStoredVolume(storageKey)
@@ -82,6 +83,10 @@ export function createEngine({ volume = 0.4, storageKey = 'clairiere.audio.volum
   let unmuteGain = level
   let context = null
   let master = null
+  /** Reprise en vol : deux `unlock()` rapprochés partagent la même promesse. */
+  let unlocking = null
+  /** Nombre d'appels à `resume()`, lisible par le playtest. */
+  let resumeCount = 0
 
   function applyGain() {
     if (!master) return
@@ -106,6 +111,36 @@ export function createEngine({ volume = 0.4, storageKey = 'clairiere.audio.volum
       master = context.createGain()
       master.gain.value = muted ? 0 : level
       master.connect(context.destination)
+    }
+    if (context.state === 'running') {
+      applyGain()
+      return Promise.resolve(true)
+    }
+    if (!unlocking) {
+      unlocking = context
+        .resume()
+        .then(() => {
+          applyGain()
+          return context.state === 'running'
+        })
+        .catch(() => false)
+        .finally(() => {
+          unlocking = null
+        })
+    }
+    return unlocking
+  }
+
+  /**
+   * Reprise au retour d'onglet : aucun geste requis, contexte jamais recréé.
+   * Renvoie `context.state === 'running'`, et compte l'appel pour le playtest.
+   */
+  function resume() {
+    resumeCount += 1
+    if (!context) return Promise.resolve(false)
+    if (context.state === 'running') {
+      applyGain()
+      return Promise.resolve(true)
     }
     return context
       .resume()
@@ -141,6 +176,7 @@ export function createEngine({ volume = 0.4, storageKey = 'clairiere.audio.volum
 
   return {
     unlock,
+    resume,
     setMuted,
     toggleMute,
     setVolume,
@@ -161,6 +197,9 @@ export function createEngine({ volume = 0.4, storageKey = 'clairiere.audio.volum
     },
     get muted() {
       return muted
+    },
+    get resumeCount() {
+      return resumeCount
     },
   }
 }
