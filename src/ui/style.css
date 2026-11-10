@@ -417,6 +417,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
    Même liseré sombre que les autres contrôles du HUD : net sur le sable comme sur la menthe. */
 .audio-toggle {
   position: absolute;
+  /* Au-dessus des voiles d'accueil, de jardins et de fin (z 20 / 20 / 10) : le son se coupe
+     dès le chargement, sans attendre une partie. */
+  z-index: 30;
   right: calc(env(safe-area-inset-right, 0px) + clamp(8px, 2vw, 20px));
   bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(8px, 2vw, 20px));
   box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
