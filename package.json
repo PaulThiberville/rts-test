@@ -8,7 +8,8 @@
     "preview": "vite preview --port 4173 --strictPort",
     "play": "node scripts/play.mjs",
     "i18n": "node scripts/i18n-check.mjs",
-    "check": "vite build && node scripts/i18n-check.mjs && node scripts/play.mjs"
+    "check": "vite build && node scripts/i18n-check.mjs && node scripts/play.mjs",
+    "showcase": "node scripts/showcase.mjs"
   },
   "dependencies": {
     "three": "^0.187.0",
