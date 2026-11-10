@@ -1,18 +1,18 @@
 ---
 tags: [gdd]
 status: draft
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Mécaniques
 
-Boucle de jeu et contrôles : le livré d'aujourd'hui, puis le contrat de #60/#58 signalé comme tel. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
+Boucle de jeu et contrôles : le livré d'aujourd'hui, puis les contrats de #60/#58 et de #148 signalés comme tels. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
 
 ## Chargement
 
 Au lancement, l'accueil s'affiche avant la clairière (`src/main.js`) : aucun décor 3D, HUD ni barre des tours n'est monté tant qu'un niveau n'est pas lancé. La boucle de rendu tourne quand même, sans niveau.
 
-Parcours : accueil → campagne → jardin → difficulté → niveau. « Retour » depuis la liste des jardins comme depuis le niveau ramène à l'accueil **sans rechargement de page** : le niveau est détruit, la progression locale reste intacte et le compteur d'images continue de croître.
+Parcours : accueil → campagne → jardin → difficulté → niveau. « Retour » depuis la liste des jardins comme depuis le niveau ramène à l'accueil **sans rechargement de page** : le niveau est détruit, la progression locale reste intacte et le compteur d'images continue de croître. Dans le niveau, ce « Retour » vit dans une barre haute dédiée, ancrée en haut de l'écran, à côté de la sève : cette barre haute ne se replie jamais.
 
 L'URL accepte `?niveau=<levelId>` pour démarrer directement sur un niveau, accueil ignoré, et `?difficulty=<easy|medium|hard>` pour présélectionner le rythme.
 
@@ -26,11 +26,15 @@ L'URL accepte `?niveau=<levelId>` pour démarrer directement sur un niveau, accu
 
 ## Boucle principale
 
-Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, ouvre la barre des tours-plantes, choisit une graine et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore. Les vagues montent ensuite d'elles-mêmes : 8 s de répit, 6 vagues d'ombres apparues une à une depuis l'entrée sud et qui suivent le chemin, tir automatique des tours-plantes sans aucun clic, cœur à 12 PV. La partie s'achève sur une victoire calme ou une défaite sans punition, avec la vague atteinte et la durée ; « Rejouer » relance aussitôt, sans confirmation. Valeurs détaillées dans « Les petites ombres ».
+Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, choisit une graine dans la barre des tours-plantes toujours ouverte et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore. Les vagues montent ensuite d'elles-mêmes : 8 s de répit, 6 vagues d'ombres apparues une à une depuis l'entrée sud et qui suivent le chemin, tir automatique des tours-plantes sans aucun clic, cœur à 12 PV. La partie s'achève sur une victoire calme ou une défaite sans punition, avec la vague atteinte et la durée ; « Rejouer » relance aussitôt, sans confirmation. Valeurs détaillées dans « Les petites ombres ».
 
 ## Tours-plantes
 
-La barre démarre fermée et se bascule avec la poignée « Tours », en bas à gauche de l'écran. Ouverte, elle liste les deux graines avec leur prix en sève ; dès qu'une tour est sélectionnée, la rangée de graines cède la place à son niveau, au prix de son amélioration et au bouton « Améliorer ».
+La barre est toujours ouverte, en bas à gauche de l'écran : aucun bouton ne l'ouvre ni ne la ferme, elle est là dès l'entrée dans le niveau et liste les deux graines avec leur prix en sève. Dès qu'une tour est sélectionnée, la rangée de graines cède la place à son niveau, au prix de son amélioration et au bouton « Améliorer » ; la sélection effacée, les deux graines reviennent.
+
+Le panneau est un aplat translucide unique, arrondi, posé sur le décor : aucun fond blanc entre ses boutons, aucun interstice clair, ni sur la rangée de graines ni sur la sélection. Les boutons affichés se lisent côte à côte, séparés par leur propre contour et non par une bande de fond clair.
+
+Contrat de #148 (barre haute dédiée, barre des tours permanente) : cette barre toujours ouverte, la barre haute et la sève affichée n'arrivent qu'avec #148 ; en attendant son merge, le module de la barre garde son bouton de repli et la sève ne s'affiche pas à l'écran.
 
 | Graine | Pose | Amélioration 1 → 2 |
 |---|---|---|
@@ -38,7 +42,7 @@ La barre démarre fermée et se bascule avec la poignée « Tours », en bas à 
 | Floraison (`bloom`) | 60 sève | 40 sève |
 
 - Prix, coûts d'amélioration et niveau maximal (2) lus dans `src/data/towers.js`.
-- Le joueur démarre avec 120 sève ; la clairière offre 4 emplacements fixes, matérialisés au sol et lus dans `src/data/level-1.js`. Aucun compteur de sève n'est affiché : seuls les prix renseignent le budget.
+- Le joueur démarre avec 120 sève ; la clairière offre 4 emplacements fixes, matérialisés au sol et lus dans `src/data/level-1.js`. La sève courante est affichée en permanence dans la barre haute, à côté de « Retour », et se décrémente à chaque pose ou amélioration : le budget se lit d'un coup d'œil, les prix ne font que l'expliciter. Compteur livré avec #148.
 - Économie fermée : 120 sève = trois Pousses, ou deux Pousses et une amélioration (110) ; une Pousse et une Floraison coûtent 100.
 - Choisir une graine arme la pose : un fantôme de la tour flotte sur l'emplacement survolé ; choisir une graine désélectionne la tour en cours.
 - Un clic sur un emplacement libre pose la tour et débite son prix.
@@ -92,13 +96,13 @@ Toutes ces valeurs se règlent dans `src/data/level-1.js` (`windup`, `waves`, `h
 | Action | Souris | Tactile |
 |---|---|---|
 | Regarder la clairière | glisser, bouton gauche maintenu | glisser un doigt |
-| Ouvrir ou fermer la barre des tours | clic sur la poignée « Tours » | toucher la poignée « Tours » |
 | Choisir une graine | clic sur Pousse ou Floraison | toucher Pousse ou Floraison |
 | Poser une tour | clic sur un emplacement libre | toucher un emplacement libre |
 | Sélectionner une tour | clic sur la tour posée | toucher la tour posée |
 | Améliorer une tour | clic sur « Améliorer » | toucher « Améliorer » |
 | Rejouer | clic sur « Rejouer » | toucher « Rejouer » |
 
+- Aucun geste n'ouvre ni ne ferme l'interface : la barre des tours reste déployée en bas à gauche et la barre haute ne se replie pas (barre permanente livrée avec #148).
 - Le tir est automatique : aucune commande de tir, ni souris ni tactile.
 - « Rejouer » et l'écran de fin arrivent avec #58/#60 ; les autres lignes du tableau sont livrées.
 - La caméra ne change pas : choisir, poser, sélectionner et améliorer sont des appuis sur place. Un déplacement de plus de 6 px entre l'appui et le relâchement reste un glissement de caméra, jamais une pose.
