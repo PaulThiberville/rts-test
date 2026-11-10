@@ -1,17 +1,21 @@
+import { createIcon } from '../art/icons.js'
+import { TOWERS } from '../data/towers.js'
 import { t } from '../i18n/index.js'
 
-let barCount = 0
-
 /**
- * Barre de tours-plantes : choix du type, prix et amélioration de la tour sélectionnée.
+ * Barre de tours-plantes : choix du type, prix et amélioration de la tour
+ * sélectionnée, toujours visible en bas à gauche. Une seule surface continue :
+ * les entrées sont séparées par un filet discret, jamais par un aplat clair.
  * Purement présentation : toute décision de gameplay remonte par les callbacks.
  * `update` ignore les champs absents pour accepter un état partiel.
  * @param {HTMLElement} root
- * @param {{ towers?: object, onSelect?: (id: string) => void, onUpgrade?: (id: number|string) => void, onToggle?: () => void }} [options]
+ * @param {{ towers?: object, onSelect?: (id: string) => void, onUpgrade?: (id: number|string) => void }} [options]
  * @returns {{ update(state?: object): void, destroy(): void }}
  */
-export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggle } = {}) {
-  const panelId = `tower-bar-panel-${++barCount}`
+export function createTowerBar(root, { towers = {}, onSelect, onUpgrade } = {}) {
+  // Vitrine : `npm run showcase` passe l'état du jeu comme options, sans catalogue.
+  // La barre montre alors le catalogue réel, jamais une rangée vide.
+  const catalog = Object.keys(towers).length ? towers : TOWERS
   const span = (className, text) => {
     const node = document.createElement('span')
     node.className = className
@@ -21,22 +25,19 @@ export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggl
 
   const el = document.createElement('section')
   el.className = 'tower-bar'
-  el.dataset.open = 'false'
+  el.dataset.open = 'true'
   el.setAttribute('role', 'group')
   el.setAttribute('aria-label', t('tower.bar.label'))
 
   const panel = document.createElement('div')
   panel.className = 'tower-bar__panel'
-  panel.id = panelId
-  panel.inert = true
-  panel.setAttribute('aria-hidden', 'true')
 
   const list = document.createElement('div')
   list.className = 'tower-bar__list'
   /** @type {Map<string, HTMLButtonElement>} */
   const entries = new Map()
 
-  for (const tower of Object.values(towers)) {
+  for (const tower of Object.values(catalog)) {
     if (!tower?.id) continue
     const entry = document.createElement('button')
     entry.type = 'button'
@@ -44,7 +45,9 @@ export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggl
     entry.dataset.tower = tower.id
     entry.dataset.cost = String(tower.cost)
     entry.setAttribute('aria-pressed', 'false')
+    // Graine décorative : le nom du type reste le nom accessible de l'entrée.
     entry.append(
+      createIcon('seed', { size: 18, className: 'tower-bar__entry-icon' }),
       span('tower-bar__entry-name', t(tower.nameKey)),
       span('tower-bar__entry-cost', t('tower.price', { n: tower.cost })),
     )
@@ -63,23 +66,15 @@ export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggl
   const upgrade = document.createElement('button')
   upgrade.type = 'button'
   upgrade.className = 'tower-bar__upgrade'
-  upgrade.textContent = t('tower.upgrade')
+  upgrade.append(
+    createIcon('upgrade', { size: 16, className: 'tower-bar__upgrade-icon' }),
+    span('tower-bar__upgrade-label', t('tower.upgrade')),
+  )
   info.append(level, price)
-
-  const handle = document.createElement('button')
-  handle.type = 'button'
-  handle.className = 'tower-bar__handle'
-  handle.id = `${panelId}-handle`
-  // Poignée 60×44 : libellé visible puis chevron (dessiné en CSS) qui indique le sens d'ouverture.
-  handle.append(span('tower-bar__handle-label', t('tower.bar.toggle')))
-  handle.title = t('tower.bar.toggle')
-  handle.setAttribute('aria-controls', panelId)
-  handle.setAttribute('aria-expanded', 'false')
-  panel.setAttribute('aria-labelledby', handle.id)
 
   selection.append(info, upgrade)
   panel.append(list, selection)
-  el.append(panel, handle)
+  el.append(panel)
   root.append(el)
 
   let lastType
@@ -91,20 +86,6 @@ export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggl
   /** @param {HTMLElement} node @param {string} value */
   function setText(node, value) {
     if (node.textContent !== value) node.textContent = value
-  }
-
-  /** @param {boolean} next */
-  function setOpen(next) {
-    const value = Boolean(next)
-    if (value === (el.dataset.open === 'true')) return
-    el.dataset.open = String(value)
-    handle.setAttribute('aria-expanded', String(value))
-    panel.inert = !value
-    if (value) panel.removeAttribute('aria-hidden')
-    else {
-      panel.setAttribute('aria-hidden', 'true')
-      if (panel.contains(document.activeElement)) handle.focus()
-    }
   }
 
   /** @param {string|null|undefined} next */
@@ -121,35 +102,31 @@ export function createTowerBar(root, { towers = {}, onSelect, onUpgrade, onToggl
     const instance = selectedRef && typeof selectedRef === 'object'
       ? selectedRef
       : towerList.find((item) => item && String(item.id) === String(selectedRef)) ?? null
-    const catalog = instance
-      ? towers[instance.type] ?? towers[instance.id]
-      : selectedRef == null ? null : towers[String(selectedRef)]
-    const shown = Boolean(catalog)
+    const catalogEntry = instance
+      ? catalog[instance.type] ?? catalog[instance.id]
+      : selectedRef == null ? null : catalog[String(selectedRef)]
+    const shown = Boolean(catalogEntry)
     if (selection.hidden !== !shown) selection.hidden = !shown
-    // La liste cède la rangée au panneau de sélection : une seule rangée de 44 px.
+    // La liste cède la rangée au panneau de sélection : une seule rangée continue.
     if (list.hidden !== shown) list.hidden = shown
     if (!shown) return
 
     const levelNumber = Math.max(1, Number(instance?.level) || 1)
     setText(level, t('tower.level', { n: levelNumber }))
-    setText(price, t('tower.price', { n: catalog.upgradeCost }))
-    const disabled = resources < catalog.upgradeCost || levelNumber >= catalog.maxLevel
+    setText(price, t('tower.price', { n: catalogEntry.upgradeCost }))
+    const disabled = resources < catalogEntry.upgradeCost || levelNumber >= catalogEntry.maxLevel
     if (upgrade.disabled !== disabled) upgrade.disabled = disabled
   }
 
   upgrade.addEventListener('click', () => {
     if (selectedRef != null) onUpgrade?.(selectedRef)
   })
-  handle.addEventListener('click', () => onToggle?.())
 
   return {
     /** @param {object} [state] */
     update(state = {}) {
       const bar = state.towerBar
-      if (bar && typeof bar === 'object') {
-        if ('open' in bar) setOpen(bar.open)
-        if ('selectedType' in bar) setPressed(bar.selectedType)
-      }
+      if (bar && typeof bar === 'object' && 'selectedType' in bar) setPressed(bar.selectedType)
       if ('towers' in state) towerList = Array.isArray(state.towers) ? state.towers : []
       if ('selectedTower' in state) selectedRef = state.selectedTower
       if ('resources' in state) {

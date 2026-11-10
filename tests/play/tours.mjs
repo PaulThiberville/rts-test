@@ -77,6 +77,89 @@ function diffPixels(page, before, after, rect, threshold = 10) {
   }, { before, after, rect, threshold })
 }
 
+/**
+ * Zones de la barre des tours à analyser sur une capture : le panneau entier, la
+ * bande de 6 px centrée sur la frontière entre les deux premières entrées, et les
+ * rectangles de texte et d'icônes à exclure (jamais jugés comme surface).
+ * Rectangles en px CSS.
+ */
+function barZones(page) {
+  return page.evaluate(() => {
+    const box = (element) => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    }
+    const panel = document.querySelector('.tower-bar__panel')
+    if (!panel) return null
+    const ink = [...panel.querySelectorAll(
+      '.tower-bar__entry-name, .tower-bar__entry-cost, .tower-bar__level,'
+      + ' .tower-bar__price, .tower-bar__upgrade-label, svg',
+    )].map(box)
+    const entries = [...panel.querySelectorAll('.tower-bar__entry')].map(box)
+    // Bande verticale de 6 px entre les deux premières entrées (filet de séparation compris).
+    let gap = null
+    if (entries.length >= 2) {
+      const top = Math.max(entries[0].y, entries[1].y)
+      const bottom = Math.min(entries[0].y + entries[0].height, entries[1].y + entries[1].height)
+      gap = {
+        x: entries[1].x - 3,
+        y: top,
+        width: 6,
+        height: Math.max(0, bottom - top),
+      }
+    }
+    return { panel: box(panel), gap, ink }
+  })
+}
+
+/**
+ * Pixels quasi blancs (canal min ≥ 240) dans des régions d'une capture décodée,
+ * hors rectangles de texte et d'icônes. Compte les échantillons et retient le
+ * maximum du canal min : la marge au seuil est donc chiffrée dans le log.
+ */
+function nearWhitePixels(page, key, regions, ink) {
+  return page.evaluate(({ key, regions, ink }) => {
+    const shot = window.__shots[key]
+    if (!shot) return null
+    // Même dpr que la page : conversion px CSS → px image.
+    const scale = shot.width / innerWidth
+    const inkRects = ink.map((rect) => ({
+      x0: rect.x * scale,
+      y0: rect.y * scale,
+      x1: (rect.x + rect.width) * scale,
+      y1: (rect.y + rect.height) * scale,
+    }))
+    const excluded = (x, y) => inkRects.some((rect) =>
+      x >= rect.x0 && x < rect.x1 && y >= rect.y0 && y < rect.y1)
+    const result = {}
+    for (const [name, rect] of Object.entries(regions)) {
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        result[name] = { samples: 0, white: 0, max: null }
+        continue
+      }
+      const x0 = Math.max(0, Math.floor(rect.x * scale))
+      const y0 = Math.max(0, Math.floor(rect.y * scale))
+      const x1 = Math.min(shot.width, Math.ceil((rect.x + rect.width) * scale))
+      const y1 = Math.min(shot.height, Math.ceil((rect.y + rect.height) * scale))
+      let samples = 0
+      let white = 0
+      let max = -1
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          if (excluded(x, y)) continue
+          const i = (y * shot.width + x) * 4
+          const min = Math.min(shot.data[i], shot.data[i + 1], shot.data[i + 2])
+          samples++
+          if (min > max) max = min
+          if (min >= 240) white++
+        }
+      }
+      result[name] = { samples, white, max: samples ? max : null }
+    }
+    return result
+  }, { key, regions, ink })
+}
+
 /** Point monde → pixels CSS, avec test de saisie réelle (canvas sous le pointeur). */
 function screenPoint(page, x, y, z) {
   return page.evaluate(({ x, y, z }) => {
@@ -151,43 +234,64 @@ async function drag(page, dx, dy, steps = 6) {
   await nextFrames(page, 2)
 }
 
+/**
+ * Attend la barre des tours, permanente depuis #148 : visible dès le montage
+ * (data-open="true", panneau opaque et non vide) et sans poignée de repli.
+ * Aucun clic : l'ouverture ne dépend plus d'une interaction.
+ */
 async function openBar(page) {
-  const open = await page.evaluate(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'true')
-  if (!open) await page.click('.tower-bar__handle')
-  await page.waitForFunction(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'true')
-  // Fin de la transition d'opacité : la capture montre la barre entièrement ouverte.
   await page.waitForFunction(() => {
-    const panel = document.querySelector('.tower-bar__panel')
-    return panel !== null && getComputedStyle(panel).opacity === '1'
+    const bar = document.querySelector('.tower-bar')
+    const panel = bar?.querySelector('.tower-bar__panel')
+    if (!bar || !panel) return false
+    const rect = panel.getBoundingClientRect()
+    const style = getComputedStyle(panel)
+    return bar.dataset.open === 'true'
+      && style.visibility !== 'hidden'
+      && style.opacity === '1'
+      && rect.width > 0 && rect.height > 0
   })
+  await page.waitForFunction(() =>
+    document.querySelector('.tower-bar__handle') === null
+    && document.querySelector('button[data-action="toggle-towers"]') === null)
 }
 
 async function selectSeed(page, type) {
   await page.click(`.tower-bar__entry[data-tower="${type}"]`)
   await page.waitForFunction((id) => window.__game.state.towerBar.selectedType === id, type)
-  // Laisse la transition CSS (160 ms) rendre l'état sélectionné avant la capture.
+  // Laisse la transition CSS (160 ms) poser la teinte menthe de sélection avant la capture.
   await page.waitForFunction((id) => {
     const entry = document.querySelector(`.tower-bar__entry[data-tower="${id}"]`)
-    return entry !== null && getComputedStyle(entry).backgroundColor === 'rgb(110, 198, 181)'
+    if (entry === null || entry.getAttribute('aria-pressed') !== 'true') return false
+    const channels = getComputedStyle(entry).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? []
+    return channels[0] === 110 && channels[1] === 198 && channels[2] === 181
+      && Math.abs(channels[3] - 0.46) < 0.01
   }, type)
 }
 
-/** Photographie DOM de la barre : entrées, prix rendus, sélection et état ARIA. */
+/**
+ * Photographie DOM de la barre : entrées (nom, prix, icône, rectangles), sélection
+ * et état ARIA. La barre est permanente (#148) : `handle` et `toggleButton` valent
+ * `null` quand les deux requêtes de repli ne trouvent rien dans le DOM.
+ */
 function readBar(page) {
   return page.evaluate(() => {
     const bar = document.querySelector('.tower-bar')
     const box = (element) => {
+      if (!element) return null
       const rect = element.getBoundingClientRect()
       return {
         x: rect.x, y: rect.y, width: rect.width, height: rect.height,
         right: rect.right, bottom: rect.bottom,
       }
     }
+    // Requêtes de la poignée et du bouton de repli supprimés par #148.
+    const handleElement = document.querySelector('.tower-bar__handle')
+    const toggleElement = document.querySelector('button[data-action="toggle-towers"]')
     const entries = [...bar.querySelectorAll('.tower-bar__entry')].map((entry) => {
       const name = entry.querySelector('.tower-bar__entry-name')
       const cost = entry.querySelector('.tower-bar__entry-cost')
+      const icon = entry.querySelector(':scope > svg')
       return {
         tower: entry.dataset.tower,
         cost: Number(entry.dataset.cost),
@@ -197,18 +301,25 @@ function readBar(page) {
         priceClipped: cost.scrollWidth > cost.clientWidth + 1,
         pressed: entry.getAttribute('aria-pressed'),
         rect: box(entry),
+        icon: box(icon),
+        iconHidden: icon?.getAttribute('aria-hidden') === 'true',
       }
     })
     const panel = bar.querySelector('.tower-bar__panel')
     const selection = bar.querySelector('.tower-bar__selection')
     const upgrade = bar.querySelector('.tower-bar__upgrade')
+    const upgradeIcon = upgrade.querySelector(':scope > svg')
     const panelStyle = getComputedStyle(panel)
+    const panelRect = panel.getBoundingClientRect()
     return {
       rect: box(bar),
-      handleRect: box(bar.querySelector('.tower-bar__handle')),
+      panelRect: box(panel),
+      // Preuve de l'absence (#148) : la requête de repli ne trouve rien.
+      handle: handleElement === null ? null : box(handleElement),
+      toggleButton: toggleElement === null ? null : box(toggleElement),
       open: bar.dataset.open === 'true',
-      expanded: bar.querySelector('.tower-bar__handle').getAttribute('aria-expanded'),
-      panelVisible: panelStyle.visibility !== 'hidden' && panelStyle.opacity === '1',
+      panelVisible: panelStyle.visibility !== 'hidden' && panelStyle.opacity === '1'
+        && panelRect.width > 0 && panelRect.height > 0,
       entries,
       listHidden: bar.querySelector('.tower-bar__list').hidden,
       selectionVisible: !selection.hidden && selection.getBoundingClientRect().width > 0,
@@ -216,6 +327,8 @@ function readBar(page) {
       price: bar.querySelector('.tower-bar__price').textContent.trim(),
       upgradeText: upgrade.textContent.trim(),
       upgradeDisabled: upgrade.disabled,
+      upgradeIcon: box(upgradeIcon),
+      upgradeIconHidden: upgradeIcon?.getAttribute('aria-hidden') === 'true',
     }
   })
 }
@@ -371,9 +484,11 @@ export default async function ({ page, load, state }) {
   ])
 
   // -------------------------------------------------------------------------
-  // Critère 1 — barre de tours-plantes : la poignée l'ouvre, au moins deux
-  // entrées visibles avec leur prix lisible, aria-pressed renseigné, en FR puis
-  // en EN (?lang=en), mêmes montants.
+  // Critère 1 — barre de tours-plantes permanente (#148) : affichée dès le
+  // chargement sans aucune interaction (`data-open="true"`, panneau opaque non
+  // vide, aucune poignée ni bouton de repli), au moins deux entrées avec icône
+  // SVG, nom et prix lisibles, aria-pressed renseigné, en FR puis en EN
+  // (?lang=en), mêmes montants.
   // -------------------------------------------------------------------------
   try {
     const amounts = {}
@@ -383,17 +498,16 @@ export default async function ({ page, load, state }) {
     ]) {
       await load(`?lang=${lang}&niveau=1`)
       await setViewport(page, DESKTOP)
-      const closed = await readBar(page)
-      check(closed.open === false, `critère 1 [${lang}] : la barre est ouverte au chargement`)
-      check(closed.panelVisible === false, `critère 1 [${lang}] : le panneau est visible avant l'ouverture`)
-      check((await state()).towerBar.open === false,
-        `critère 1 [${lang}] : state.towerBar.open n'est pas false au chargement`)
-
-      await openBar(page)
+      // Aucune interaction avant cette lecture : la barre est là d'emblée.
       const bar = await readBar(page)
-      check(bar.open === true, `critère 1 [${lang}] : la poignée n'ouvre pas la barre`)
-      check(bar.expanded === 'true', `critère 1 [${lang}] : aria-expanded de la poignée n'est pas « true »`)
-      check(bar.panelVisible === true, `critère 1 [${lang}] : le panneau ouvert n'est pas visible`)
+      check(bar.open === true,
+        `critère 1 [${lang}] : data-open n'est pas « true » au chargement`)
+      check(bar.panelVisible === true,
+        `critère 1 [${lang}] : le panneau n'est pas visible sans interaction`)
+      check(bar.handle === null,
+        `critère 1 [${lang}] : .tower-bar__handle existe encore (${JSON.stringify(bar.handle)})`)
+      check(bar.toggleButton === null,
+        `critère 1 [${lang}] : button[data-action="toggle-towers"] existe encore (${JSON.stringify(bar.toggleButton)})`)
       check(bar.entries.length >= 2,
         `critère 1 [${lang}] : ${bar.entries.length} entrée(s) au lieu d'au moins 2`)
 
@@ -412,6 +526,10 @@ export default async function ({ page, load, state }) {
           `critère 1 [${lang}] : prix ${tower.id} « ${entry.price} » ≠ « ${price} »`)
         check(entry.rect.width > 0 && entry.rect.height > 0,
           `critère 1 [${lang}] : entrée ${tower.id} non visible (${entry.rect.width}×${entry.rect.height})`)
+        check(entry.icon !== null && entry.icon.width > 0 && entry.icon.height > 0,
+          `critère 1 [${lang}] : entrée ${tower.id} sans icône SVG mesurable`)
+        check(entry.iconHidden === true,
+          `critère 1 [${lang}] : l'icône de ${tower.id} n'est pas aria-hidden`)
         check(entry.nameClipped === false && entry.priceClipped === false,
           `critère 1 [${lang}] : libellé ou prix de ${tower.id} tronqué à l'écran`)
         check(entry.pressed === 'false',
@@ -644,6 +762,10 @@ export default async function ({ page, load, state }) {
       `critère 4 : prix d'amélioration affiché « ${withSelection.price} »`)
     check(withSelection.upgradeText === fr['tower.upgrade'],
       `critère 4 : bouton « ${withSelection.upgradeText} » au lieu de « ${fr['tower.upgrade']} »`)
+    check(withSelection.upgradeIcon !== null && withSelection.upgradeIcon.width > 0,
+      'critère 4 : le bouton d\'amélioration n\'a pas d\'icône SVG mesurable')
+    check(withSelection.upgradeIconHidden === true,
+      'critère 4 : l\'icône du bouton d\'amélioration n\'est pas aria-hidden')
     check(withSelection.upgradeDisabled === false,
       'critère 4 : le bouton d\'amélioration est inactif avec 80 sève')
 
@@ -682,7 +804,9 @@ export default async function ({ page, load, state }) {
     // Laisse la transition CSS (160 ms) rendre le bouton inactif avant la capture.
     await page.waitForFunction(() => {
       const button = document.querySelector('.tower-bar__upgrade')
-      return button.disabled && getComputedStyle(button).backgroundColor === 'rgb(233, 226, 210)'
+      if (!button?.disabled) return false
+      const channels = getComputedStyle(button).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? []
+      return channels[0] === 217 && channels[1] === 207 && channels[2] === 184
     })
     await nextFrames(page, 2)
 
@@ -847,9 +971,10 @@ export default async function ({ page, load, state }) {
     const inViewport = (rect) => rect.x >= 0 && rect.y >= 0
       && rect.right <= page.viewportSize().width + 0.5
       && rect.bottom <= page.viewportSize().height + 0.5
-    check(mobileBar.open === true, 'critère 6 : la barre ne s\'ouvre pas sur 390×844')
-    check(inViewport(mobileBar.rect) && inViewport(mobileBar.handleRect),
-      `critère 6 : barre (${JSON.stringify(mobileBar.rect)}) ou poignée hors du viewport 390×844`)
+    check(mobileBar.open === true, 'critère 6 : la barre n\'est pas affichée sur 390×844')
+    check(mobileBar.handle === null, 'critère 6 : une poignée de repli existe encore sur 390×844')
+    check(inViewport(mobileBar.rect) && inViewport(mobileBar.panelRect),
+      `critère 6 : barre (${JSON.stringify(mobileBar.rect)}) ou panneau (${JSON.stringify(mobileBar.panelRect)}) hors du viewport 390×844`)
     check(mobileBar.entries.length >= 2 && mobileBar.entries.every((entry) =>
       inViewport(entry.rect) && entry.priceClipped === false),
       'critère 6 : entrées ou prix illisibles sur 390×844')
@@ -866,7 +991,15 @@ export default async function ({ page, load, state }) {
     await drag(page, -(0.45 - mobileCamera.yaw) / RADIANS_PER_PIXEL, -(1.05 - mobileCamera.pitch) / RADIANS_PER_PIXEL)
     await page.waitForFunction(() => Math.abs(window.__game.state.camera.yaw - 0.45) <= 0.01)
     const mobileSlots = await slotPoints(page)
-    const mobileTarget = mobileSlots.find((slot) => slot.inFront && slot.inside && slot.canvas)
+    // La barre des tours est permanente (#148) : un tap à quelques pixels au-dessus
+    // du panneau est réaccordé par le navigateur sur l'entrée la plus proche. Le point
+    // retenu garde donc 16 px de dégagement au-dessus du panneau et reste sur le canvas.
+    const barTop = await page.evaluate(() => window.__game.measureUi().towerBar?.y ?? innerHeight)
+    const TOUCH_CLEARANCE = 16
+    const mobileTarget = mobileSlots.find((slot) => slot.inFront && slot.inside && slot.canvas
+      && slot.y + TOUCH_CLEARANCE <= barTop)
+    check(Boolean(mobileTarget),
+      `critère 6 : aucun emplacement cliquable à 390×844 dégagé de la barre permanente (panneau à ${barTop} px)`)
     if (mobileTarget) {
       await tapCanvas(page, mobileTarget)
       await page.waitForFunction(() => window.__game.state.towers.length === 1)
@@ -879,6 +1012,41 @@ export default async function ({ page, load, state }) {
     await capture(page, 'c6-mobile')
   } catch (error) {
     failures.push(`critère 6 : ${error.message}`)
+  }
+
+  // -------------------------------------------------------------------------
+  // Critère 7 (#148) — style mesuré sur capture : la barre des tours est une
+  // surface sable continue. Dans la surface de `.tower-bar__panel` et dans la
+  // bande de 6 px entre les deux entrées, aucun pixel quasi blanc (canal min
+  // ≥ 240) hors rectangles de texte et d'icônes ; échantillons et maximum
+  // journalisés.
+  // -------------------------------------------------------------------------
+  try {
+    await load('?lang=fr&niveau=1')
+    await setViewport(page, DESKTOP)
+    await openBar(page)
+    // Pointeur hors de la barre : aucun survol ne teinte une entrée sur la capture.
+    await page.mouse.move(960, 120)
+    await nextFrames(page, 2)
+    const zones = await barZones(page)
+    check(zones !== null, 'critère 7 : panneau de la barre introuvable')
+    check(Boolean(zones?.gap) && zones.gap.height > 0,
+      `critère 7 : bande de 6 px entre deux entrées non mesurable (${JSON.stringify(zones?.gap)})`)
+    await decode(page, await capture(page, 'c7-surface'), 'c7-surface')
+    const scan = await nearWhitePixels(page, 'c7-surface', {
+      panneau: zones?.panel ?? null,
+      'bande-6px': zones?.gap ?? null,
+    }, zones?.ink ?? [])
+    check(scan !== null, 'critère 7 : capture non décodée')
+    for (const [name, stats] of Object.entries(scan ?? {})) {
+      check(stats.samples > 0, `critère 7 : région ${name} vide (${stats.samples} échantillon)`)
+      check(stats.white === 0,
+        `critère 7 : ${stats.white} pixel(s) quasi blanc(s) dans ${name} (canal min max ${stats.max})`)
+      console.log(`[tours] critère 7 — ${name} : ${stats.samples} échantillons, `
+        + `${stats.white} quasi blanc(s), canal min max ${stats.max}`)
+    }
+  } catch (error) {
+    failures.push(`critère 7 : ${error.message}`)
   }
 
   if (failures.length) throw new Error(failures.join(' | '))

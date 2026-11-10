@@ -15,6 +15,7 @@ import { LEVEL_6 } from './data/level-6.js'
 import { TOWERS } from './data/towers.js'
 import { t } from './i18n/index.js'
 import { createAudioToggle } from './ui/audio-toggle.js'
+import { createHighBar } from './ui/high-bar.js'
 import { createHomeScreen } from './ui/home.js'
 import { createLevelHud } from './ui/level-hud.js'
 import { createLevelSelect } from './ui/level-select.js'
@@ -169,26 +170,6 @@ function selectProgress() {
   return { unlocked: game.state.unlocked, completed: game.state.progress.completed }
 }
 
-/**
- * Bouton « Retour » du niveau : le HUD du niveau n'en porte pas, l'intégration le
- * place sous ce HUD, à l'écart du chemin et des contrôles.
- * @returns {HTMLButtonElement}
- */
-function createBackButton() {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'level-select__button level-select__button--back'
-  button.dataset.action = 'back'
-  button.textContent = t('game.back')
-  button.style.position = 'absolute'
-  button.style.left = 'calc(env(safe-area-inset-left, 0px) + clamp(8px, 2vw, 20px))'
-  button.style.top = 'calc(env(safe-area-inset-top, 0px) + clamp(104px, 14vh, 128px))'
-  button.style.zIndex = '5'
-  button.style.pointerEvents = 'auto'
-  button.addEventListener('click', showHome)
-  return button
-}
-
 /** Détruit l'écran courant de la liste des jardins. */
 function closeLevelSelect() {
   levelSelect?.destroy()
@@ -201,11 +182,11 @@ function closeLevelSelect() {
  */
 function stopLevel() {
   if (!session) return
-  const { level, hud, back, towerBar, towers, waveHud, waves } = session
+  const { level, hud, highBar, towerBar, towers, waveHud, waves } = session
   session = null
   waveHud.destroy()
   waves.dispose()
-  back.remove()
+  highBar.destroy()
   towerBar.destroy()
   towers.dispose()
   hud.destroy()
@@ -264,9 +245,10 @@ function mountLevel({ campaign, level: entry }, difficulty) {
   game.state.difficulty = difficulty.id
   game.state.waveMultiplier = difficulty.multiplier
 
+  // Barre haute montée avant les autres HUD : le retour aux jardins et la sève
+  // occupent le haut de l'écran, le HUD du niveau se place en dessous.
+  const highBar = createHighBar(ui, { onBack: showHome, state: game.state })
   const hud = createLevelHud(ui, { level: map })
-  const back = createBackButton()
-  ui.append(back)
 
   let towerBar
   /** Nombre de tours déjà posées : une pose de plus, et une seule, déclenche le son. */
@@ -276,15 +258,17 @@ function mountLevel({ campaign, level: entry }, difficulty) {
     if (placed > placedTowers && game.state.lastAction === 'placed') audio.play('plant')
     placedTowers = placed
     towerBar?.update(game.state)
+    highBar.update(game.state)
   }
   const towers = createTowerSystem(game, { level: map, onChange: onTowersChange })
   towerBar = createTowerBar(ui, {
     towers: TOWERS,
     onSelect: (type) => towers.selectType(type),
     onUpgrade: (id) => towers.upgrade(id),
-    onToggle: () => towers.toggleBar(),
   })
   towerBar.update(game.state)
+  // `createTowerSystem` pose la sève de départ dans l'état : la barre la lit après lui.
+  highBar.update(game.state)
 
   // `waves.restart()` remet aussi les tours à zéro : le système lui est exposé ici.
   game.towers = towers
@@ -308,7 +292,7 @@ function mountLevel({ campaign, level: entry }, difficulty) {
     onEnd: updateWaves,
   })
 
-  session = { level, hud, back, towerBar, towers, waveHud, waves }
+  session = { level, hud, highBar, towerBar, towers, waveHud, waves }
 }
 
 /**
@@ -373,7 +357,27 @@ function completeLevel() {
   return saved
 }
 
+/**
+ * Rectangles px CSS des blocs du HUD du niveau, recalculés à chaque appel :
+ * le playtest vérifie les cibles et l'absence de chevauchement. Un bloc absent
+ * (hors niveau) vaut `null`.
+ * @returns {{ highBar: DOMRect|null, waveHud: DOMRect|null, core: DOMRect|null, towerBar: DOMRect|null }}
+ */
+function measureUi() {
+  const measure = (selector) => {
+    const node = document.querySelector(selector)
+    return node ? node.getBoundingClientRect() : null
+  }
+  return {
+    highBar: measure('.high-bar'),
+    waveHud: measure('.wave-hud'),
+    core: measure('.wave-hud__core'),
+    towerBar: measure('.tower-bar__panel'),
+  }
+}
+
 game.completeLevel = completeLevel
+game.measureUi = measureUi
 
 applyMeta()
 

@@ -99,15 +99,26 @@ async function clickCanvas(page, point) {
   await page.mouse.up()
 }
 
-/** Ouvre la barre de tours si besoin, puis attend la fin de la transition. */
+/**
+ * Attend la barre des tours, permanente depuis #148 : visible dès le montage
+ * (data-open="true", panneau opaque non vide) et sans poignée de repli.
+ * Aucun clic : l'ouverture ne dépend plus d'une interaction.
+ */
 async function openBar(page) {
-  const open = await page.evaluate(() => document.querySelector('.tower-bar')?.dataset.open === 'true')
-  if (!open) await page.click('.tower-bar__handle')
-  await page.waitForFunction(() => document.querySelector('.tower-bar')?.dataset.open === 'true')
   await page.waitForFunction(() => {
-    const panel = document.querySelector('.tower-bar__panel')
-    return panel !== null && getComputedStyle(panel).opacity === '1'
+    const bar = document.querySelector('.tower-bar')
+    const panel = bar?.querySelector('.tower-bar__panel')
+    if (!bar || !panel) return false
+    const rect = panel.getBoundingClientRect()
+    const style = getComputedStyle(panel)
+    return bar.dataset.open === 'true'
+      && style.visibility !== 'hidden'
+      && style.opacity === '1'
+      && rect.width > 0 && rect.height > 0
   })
+  await page.waitForFunction(() =>
+    document.querySelector('.tower-bar__handle') === null
+    && document.querySelector('button[data-action="toggle-towers"]') === null)
 }
 
 async function selectSeed(page, type) {

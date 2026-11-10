@@ -1,11 +1,65 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
+/* Hauteur utile de la barre haute : les HUD du niveau se posent dessous, jamais à sa place. */
+:root { --high-bar-height: 52px; }
 #ui { position: fixed; inset: 0; pointer-events: none; font: 14px system-ui, sans-serif; color: #e2e8f0; }
 .hud { position: absolute; top: 12px; left: 12px; }
 
-/* HUD du niveau : panneau clair en haut à gauche, hors des zones interactives. */
+/* Barre haute : bande continue ancrée en haut, le retour à gauche, la sève à droite.
+   Le fond est la teinte d'encre de la DA (pas de voile clair) : le texte crème garde
+   6,8:1 même sur le sol le plus clair, et les cartes crème du niveau restent distinctes. */
+.high-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 6;
+  box-sizing: border-box; display: flex; align-items: center; gap: 10px;
+  min-height: calc(env(safe-area-inset-top, 0px) + var(--high-bar-height));
+  padding: calc(env(safe-area-inset-top, 0px) + 4px)
+    calc(env(safe-area-inset-right, 0px) + clamp(8px, 2vw, 16px)) 4px
+    calc(env(safe-area-inset-left, 0px) + clamp(8px, 2vw, 16px));
+  background: rgb(62 74 67 / 92%); color: #faf3e3;
+  border-bottom: 1px solid rgb(250 243 227 / 16%);
+  box-shadow: 0 6px 18px rgb(29 36 51 / 18%);
+  backdrop-filter: blur(8px);
+  /* La bande laisse passer le geste de caméra ; seuls ses contrôles captent le pointeur. */
+  pointer-events: none;
+}
+
+.high-bar__back {
+  pointer-events: auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 44px; min-height: 44px; margin: 0; padding: 0 14px 0 10px;
+  border: 1.5px solid rgb(62 74 67 / 30%); border-radius: 999px;
+  background: #faf3e3; color: #3e4a43;
+  font: inherit; font-size: clamp(0.85rem, 3.2vw, 0.95rem); font-weight: 600; line-height: 1;
+  cursor: pointer; transition: background-color 160ms ease;
+}
+.high-bar__back:hover { background: #f2ead8; }
+.high-bar__back:active { background: #e4dcc9; }
+/* Anneau crème doublé d'un halo d'encre : lisible sur la bande comme sur le ciel. */
+.high-bar__back:focus-visible {
+  outline: 2px solid #faf3e3; outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(62 74 67 / 55%);
+}
+.high-bar__back-icon { display: block; width: 20px; height: 20px; flex: 0 0 auto; }
+.high-bar__back-label { white-space: nowrap; }
+
+.high-bar__sap {
+  margin-left: auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 44px; min-height: 44px; padding: 0 12px;
+  border: 1px solid rgb(250 243 227 / 20%); border-radius: 999px;
+  background: rgb(250 243 227 / 12%); color: #faf3e3;
+  font-size: clamp(0.85rem, 3.2vw, 0.95rem); font-weight: 600; line-height: 1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.high-bar__sap-icon { display: block; width: 20px; height: 20px; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .high-bar__back { transition: none; }
+}
+
+/* HUD du niveau : panneau clair sous la barre haute, hors des zones interactives. */
 .level-hud {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + clamp(8px, 2vw, 20px));
+  top: calc(env(safe-area-inset-top, 0px) + var(--high-bar-height) + clamp(8px, 2vw, 16px));
   left: calc(env(safe-area-inset-left, 0px) + clamp(8px, 2vw, 20px));
   box-sizing: border-box;
   max-width: min(78vw, 18rem);
@@ -46,101 +100,101 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   }
 }
 
-/* Barre de tours-plantes : bande basse de 120×44 ancrée en bas à gauche, sous le cœur, le HUD et hors du ruban du chemin. Le conteneur EST le panneau ; la poignée « Tours » (60×44) flotte 4 px au-dessus et n'agrandit pas son rect. `#ui` reste transparente aux pointeurs : seuls les contrôles les capturent. */
+/* Barre des tours-plantes : rangée continue en bas à gauche, toujours visible.
+   Une seule surface sable opaque : les entrées sont séparées par un filet d'encre de 1 px,
+   jamais par un aplat clair — aucun pixel proche du blanc hors texte et icônes.
+   `#ui` reste transparente aux pointeurs : seuls les contrôles les capturent. */
 .tower-bar {
-  position: absolute; left: env(safe-area-inset-left, 0px); bottom: env(safe-area-inset-bottom, 0px);
-  box-sizing: border-box; width: 120px; height: 44px;
-  font-size: 0.7rem; /* ≈ 11 px : nom + prix tiennent dans 52-56 px */
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + clamp(8px, 2vw, 20px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(8px, 2vw, 20px));
+  box-sizing: border-box;
+  /* Réserve la pastille du son (44 px + sa marge) et 8 px d'air : à 360 px, il reste
+     assez de largeur pour « Pousse » et « Floraison » entiers, icône et prix compris. */
+  max-width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)
+    - clamp(8px, 2vw, 20px) - 3.75rem);
+  font-size: clamp(0.7rem, 3.1vw, 0.82rem);
   color: #3e4a43; pointer-events: none;
 }
 
-/* Fermé, le panneau reste en place mais invisible (`inert`) : seule la poignée au-dessus se voit. */
 .tower-bar__panel {
-  position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: stretch;
-  gap: 4px; padding: 0 2px; border-radius: 0.6rem; background: #faf3e3;
-  box-shadow: 0 4px 14px rgb(62 74 67 / 22%), 0 0 0 1px rgb(62 74 67 / 10%);
-  opacity: 0; visibility: hidden; transition: opacity 160ms ease, visibility 0s linear 160ms;
+  box-sizing: border-box; display: flex; align-items: stretch;
+  padding: 3px; border-radius: 0.8rem;
+  border: 1.5px solid rgb(62 74 67 / 45%);
+  background: #e4dac5;
+  box-shadow: 0 4px 14px rgb(62 74 67 / 18%);
 }
-.tower-bar[data-open='true'] .tower-bar__panel {
-  opacity: 1; visibility: visible; transition: opacity 160ms ease;
-}
-.tower-bar__list { display: flex; flex: 1 1 auto; gap: 4px; min-width: 0; }
+.tower-bar__list { display: flex; flex: 1 1 auto; min-width: 0; }
 .tower-bar__list[hidden], .tower-bar__selection[hidden] { display: none; }
 
+/* Entrée : icône, nom et prix sur une ligne. Aucun cadre propre : la barre est d'un bloc. */
 .tower-bar__entry {
-  pointer-events: auto; flex: 1 1 0; min-width: 0; box-sizing: border-box;
-  display: flex; flex-direction: column; justify-content: center; gap: 1px;
-  min-height: 44px; margin: 0; padding: 2px 1px; border: 1px solid rgb(62 74 67 / 35%);
-  border-radius: 0.45rem; background: transparent; color: #3e4a43;
-  font: inherit; line-height: 1.08; text-align: left; cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  pointer-events: auto; position: relative; flex: 0 1 auto; min-width: 0; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 44px; margin: 0; padding: 0 8px;
+  border: 0; border-radius: 0.55rem; background: transparent; color: #3e4a43;
+  font: inherit; line-height: 1.1; cursor: pointer;
+  transition: background-color 160ms ease;
 }
-.tower-bar__entry:hover { background: rgb(110 198 181 / 18%); }
-.tower-bar__entry[aria-pressed='true'] { border-color: #3e4a43; background: #6ec6b5; }
-/* « Floraison » doit tenir sur une ligne dans ≈ 52 px de zone texte (FR, 360 px). */
+/* Filet de séparation : 1 px d'encre à 25 %, en retrait de 9 px en haut et en bas. */
+.tower-bar__entry + .tower-bar__entry::before {
+  content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 1px;
+  background: rgb(62 74 67 / 25%);
+}
+.tower-bar__entry:hover { background: rgb(62 74 67 / 8%); }
+/* Sélection : teinte menthe posée sur le sable, anneau d'encre rentrant. */
+.tower-bar__entry[aria-pressed='true'] {
+  background: rgb(110 198 181 / 46%);
+  box-shadow: inset 0 0 0 1.5px #3e4a43;
+}
+.tower-bar__entry[aria-pressed='true']::before { display: none; }
+.tower-bar__entry-icon { display: block; width: 18px; height: 18px; flex: 0 0 auto; }
 .tower-bar__entry-name {
-  font-weight: 600; font-size: 1em; letter-spacing: -0.015em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tower-bar__entry-cost { font-size: 0.9em; line-height: 1.15; white-space: nowrap; }
+.tower-bar__entry-cost {
+  font-size: 0.95em; color: #4b574f; white-space: nowrap; flex: 0 0 auto;
+}
 
 /* Sélection : niveau et prix à gauche, bouton d'amélioration ≥ 44×44 à droite, même rangée. */
 .tower-bar__selection {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px;
-  flex: 1 1 auto; min-width: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  flex: 1 1 auto; min-width: 0; padding-left: 9px;
 }
 .tower-bar__info {
-  min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 1em; line-height: 1.08;
+  min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.1;
 }
-.tower-bar__level { font-weight: 600; }
-.tower-bar__price { font-size: 0.9em; }
+.tower-bar__level { font-weight: 600; white-space: nowrap; }
+.tower-bar__price { font-size: 0.95em; color: #4b574f; white-space: nowrap; }
 .tower-bar__upgrade {
-  pointer-events: auto; box-sizing: border-box; min-width: 44px; min-height: 44px; margin: 0;
-  padding: 0 2px; border: 1.5px solid #3e4a43; border-radius: 0.45rem; background: #6ec6b5;
-  color: #3e4a43; font: inherit; font-size: 0.85em; font-weight: 600; line-height: 1.05;
-  cursor: pointer; transition: background-color 160ms ease, opacity 160ms ease;
+  pointer-events: auto; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-width: 44px; min-height: 44px; margin: 0; padding: 0 10px;
+  border: 1.5px solid #3e4a43; border-radius: 0.55rem; background: #6ec6b5;
+  color: #3e4a43; font: inherit; font-weight: 600; line-height: 1.05; white-space: nowrap;
+  cursor: pointer; transition: background-color 160ms ease;
 }
 .tower-bar__upgrade:hover:not(:disabled) { background: #83d3c2; }
+/* Indisponible (sève ou niveau max) : sable éteint, libellé encore à 4,9:1. */
 .tower-bar__upgrade:disabled {
-  border-color: rgb(62 74 67 / 45%); background: #e9e2d2; color: #3e4a43;
-  opacity: 0.8; cursor: not-allowed;
+  border-color: rgb(62 74 67 / 40%); background: #d9cfb8; color: #4b574f;
+  cursor: not-allowed;
 }
+.tower-bar__upgrade-icon { display: block; width: 16px; height: 16px; flex: 0 0 auto; }
+.tower-bar__upgrade:disabled .tower-bar__upgrade-icon { opacity: 0.55; }
 
-/* Poignée 60×44 au-dessus du panneau : chevron CSS + libellé toujours visible. */
-.tower-bar__handle {
-  pointer-events: auto; position: absolute; left: 0; bottom: calc(100% + 4px); box-sizing: border-box;
-  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
-  width: 60px; height: 44px; margin: 0; padding: 0 4px;
-  border: 1.5px solid #3e4a43; border-radius: 0.55rem; background: #faf3e3;
-  color: #3e4a43; font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
-  box-shadow: 0 3px 12px rgb(62 74 67 / 18%); transition: background-color 160ms ease;
-}
-.tower-bar__handle-label {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.95em; line-height: 1.1;
-}
-/* Chevron : fermée, il pointe vers le bas (le panneau s'ouvrira dessous) ; ouverte, vers le haut. */
-.tower-bar__handle::after {
-  content: ''; flex: 0 0 auto; box-sizing: border-box; width: 0.42em; height: 0.42em;
-  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
-  transform: rotate(45deg); transition: transform 160ms ease;
-}
-.tower-bar[data-open='true'] .tower-bar__handle::after { transform: rotate(225deg); }
-.tower-bar__handle:hover { background: #f2ead8; }
+.tower-bar__entry:focus-visible,
+.tower-bar__upgrade:focus-visible { outline: 2px solid #3e4a43; outline-offset: -2px; }
 
-/* Anneau à l'extérieur de l'entrée : 52 px de zone texte ne tolèrent pas un contour rentrant. */
-.tower-bar__entry:focus-visible { outline: 2px solid #3e4a43; outline-offset: 1px; }
-.tower-bar__upgrade:focus-visible,
-.tower-bar__handle:focus-visible { outline: 2px solid #3e4a43; outline-offset: -3px; }
 @media (prefers-reduced-motion: reduce) {
-  .tower-bar[data-open] .tower-bar__panel, .tower-bar__entry, .tower-bar__upgrade,
-  .tower-bar__handle, .tower-bar__handle::after { transition: none; }
+  .tower-bar__entry, .tower-bar__upgrade { transition: none; }
 }
 
 /* HUD de vague : bandeau haut à droite, au-dessus du cœur et hors du chemin.
    Largeur au contenu (≈ 110 px) pour laisser le panneau du niveau à gauche sur 360 px. */
 .wave-hud {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + clamp(8px, 2vw, 20px));
+  top: calc(env(safe-area-inset-top, 0px) + var(--high-bar-height) + clamp(8px, 2vw, 16px));
   right: calc(env(safe-area-inset-right, 0px) + clamp(8px, 2vw, 20px));
   box-sizing: border-box;
   display: grid; gap: 2px; justify-items: stretch;
@@ -181,9 +235,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
 }
 
 .wave-hud__core {
-  margin-top: 2px; font-size: clamp(0.74rem, 2.9vw, 0.82rem);
+  margin-top: 2px;
+  display: flex; align-items: center; gap: 5px;
+  font-size: clamp(0.74rem, 2.9vw, 0.82rem);
   font-weight: 600; font-variant-numeric: tabular-nums;
 }
+.wave-hud__core-icon { display: block; width: 16px; height: 16px; flex: 0 0 auto; }
 .wave-hud[data-core='low'] .wave-hud__core { color: #7a2e22; }
 
 /* Jauge de vie du cœur : le remplissage porte seule la couleur danger. */
