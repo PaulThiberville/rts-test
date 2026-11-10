@@ -54,7 +54,7 @@ export const LEVEL_1 = {
   path: { width: 2.6, color: '#bfa072', points: [[0, 11], [2, 6], [-1.6, 1], [1.2, -3.5], [0, -7]] },
   slots: [
     { id: 'slot-1', x: 3.3, z: 2.95 },
-    { id: 'slot-2', x: -3.9, z: 1.9 },
+    { id: 'slot-2', x: -4.2, z: 2.0 },
     { id: 'slot-3', x: 3.7, z: -2.2 },
     { id: 'slot-4', x: -3.4, z: -2.1 },
   ],
