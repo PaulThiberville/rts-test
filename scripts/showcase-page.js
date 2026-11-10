@@ -42,7 +42,9 @@ async function showModule(path, exportName, kind) {
   }
 
   const value = await factory()
+  show.value = value
   const stage = createStage()
+  if (isMaterialMap(value)) return showMaterialMap(stage, value)
   if (value?.isObject3D && typeof value.burst === 'function') return showEffect(stage, value)
   if (value?.isObject3D) return showObject(stage, value)
   if (value?.isMaterial) return showMaterial(stage, value)
@@ -90,6 +92,38 @@ function showObject(stage, object) {
   object.position.y -= box.min.y // posé sur le sol
   stage.scene.add(object)
   Object.assign(show, { kind: 'objet', views: Object.keys(VIEWS), show: async (v) => frame(stage, object, VIEWS[v]) })
+}
+
+/** Un objet de matériaux (une palette) : une rangée d'aplats comparables d'un coup d'œil. */
+function isMaterialMap(value) {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !value.isMaterial &&
+    !value.isTexture &&
+    !value.isObject3D &&
+    Object.values(value).some((entry) => entry?.isMaterial) &&
+    Object.values(value).every((entry) => entry?.isMaterial)
+  )
+}
+
+function showMaterialMap(stage, materials) {
+  const entries = Object.entries(materials)
+  const group = new THREE.Group()
+  const radius = 0.44
+  entries.forEach(([, material], i) => {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32), material)
+    mesh.position.set((i - (entries.length - 1) / 2) * 1.02, radius, 0)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    group.add(mesh)
+  })
+  stage.scene.add(group)
+  Object.assign(show, {
+    kind: 'matériaux',
+    views: ['face', 'trois-quarts'],
+    show: async (v) => frame(stage, group, VIEWS[v]),
+  })
 }
 
 function showMaterial(stage, material, kind = 'matériau') {
