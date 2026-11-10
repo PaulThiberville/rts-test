@@ -8,11 +8,16 @@ export function createGame(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.setSize(innerWidth, innerHeight)
+  // Ombres douces : sous three 0.187, `PCFSoftShadowMap` n'est plus implémenté — au premier
+  // rendu d'ombre, WebGLShadowMap bascule le renderer sur `PCFShadowMap` et avertit une fois.
+  // La douceur vient de `shadow.radius`, et `state.lighting.shadowMap` expose ce type réel.
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   container.appendChild(renderer.domElement)
 
+  // Fond provisoire : `createLevel` le remplace par la teinte du sol dès le montage.
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x1d2433)
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 2))
 
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000)
   camera.position.set(0, 2, 5)
@@ -26,7 +31,7 @@ export function createGame(container) {
 
   const timer = new THREE.Timer()
   const entities = new Set()
-  const state = { frames: 0, paused: false }
+  const state = { frames: 0, paused: false, render: { drawCalls: 0, triangles: 0 } }
   let render = () => renderer.render(scene, camera)
 
   /** Abonnés du bus de jeu, rangés par nom d'événement. */
@@ -55,6 +60,9 @@ export function createGame(container) {
     const dt = Math.min(timer.getDelta(), 0.1) // évite les sauts après un onglet en arrière-plan
     if (!state.paused) for (const e of entities) e.update?.(dt)
     render(dt)
+    // Budget de rendu de la dernière image : lu par le playtest en 390×844.
+    state.render.drawCalls = renderer.info.render.calls
+    state.render.triangles = renderer.info.render.triangles
     state.frames++
   }
 
