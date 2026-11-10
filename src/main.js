@@ -7,6 +7,11 @@ import { createWaveSystem } from './core/waves.js'
 import { CAMPAIGNS, findCampaign, findLevel } from './data/campaigns.js'
 import { DIFFICULTIES, findDifficulty } from './data/difficulties.js'
 import { LEVEL_1 } from './data/level-1.js'
+import { LEVEL_2 } from './data/level-2.js'
+import { LEVEL_3 } from './data/level-3.js'
+import { LEVEL_4 } from './data/level-4.js'
+import { LEVEL_5 } from './data/level-5.js'
+import { LEVEL_6 } from './data/level-6.js'
 import { TOWERS } from './data/towers.js'
 import { t } from './i18n/index.js'
 import { createAudioToggle } from './ui/audio-toggle.js'
@@ -22,11 +27,15 @@ const AUDIO_VOLUME_KEY = 'clairiere.audio.volume'
 /** Difficulté d'un lancement direct par URL : la liste des jardins est ignorée. */
 const DIRECT_DIFFICULTY = 'medium'
 
-/**
- * Cartes réellement conçues, par id de `map` des campagnes : les six jardins de
- * Sèveclaire partagent la clairière tant que les suivantes ne sont pas dessinées.
- */
-const MAPS = new Map([['level-1', LEVEL_1]])
+/** Cartes réellement conçues, par id de `map` des campagnes : les six jardins de Sèveclaire. */
+const MAPS = new Map([
+  ['level-1', LEVEL_1],
+  ['level-2', LEVEL_2],
+  ['level-3', LEVEL_3],
+  ['level-4', LEVEL_4],
+  ['level-5', LEVEL_5],
+  ['level-6', LEVEL_6],
+])
 
 const game = createGame(document.body)
 const ui = document.getElementById('ui')
