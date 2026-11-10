@@ -230,13 +230,15 @@ function showHome() {
 /**
  * Ouvre la liste des jardins d'une campagne `available` ;
  * une campagne indisponible ne change rien à l'écran.
+ * L'appel depuis le jeu, après `stopLevel()`, remplace la liste sans rechargement.
  * @param {string} campaignId
  */
 function openCampaign(campaignId) {
   const campaign = findCampaign(campaignId)
-  if (game.state.screen !== 'home' || !campaign || campaign.available !== true) return
+  if (!campaign || campaign.available !== true) return
   home?.destroy()
   home = null
+  closeLevelSelect()
   game.state.screen = 'levels'
   game.state.campaign = campaign.id
   levelSelect = createLevelSelect(ui, {
@@ -246,6 +248,17 @@ function openCampaign(campaignId) {
     onBack: showHome,
   })
   levelSelect.update({ progress: selectProgress(), difficulty: game.state.difficulty })
+}
+
+/**
+ * Ferme le niveau et rouvre la liste de la campagne en cours, progression à jour,
+ * sans rechargement de page : la victoire y est déjà enregistrée.
+ */
+function showLevels() {
+  const campaignId = game.state.campaign
+  stopLevel()
+  closeLevelSelect()
+  openCampaign(campaignId)
 }
 
 /**
@@ -289,7 +302,11 @@ function mountLevel({ campaign, level: entry }, difficulty) {
   // `waves.restart()` remet aussi les tours à zéro : le système lui est exposé ici.
   game.towers = towers
 
-  const waveHud = createWaveHud(ui, { onRestart: () => waves.restart() })
+  const waveHud = createWaveHud(ui, {
+    onRestart: () => waves.restart(),
+    onNext: () => goNextLevel(),
+    onExit: () => showLevels(),
+  })
 
   /**
    * Tout changement de vague, et la fin de partie : la victoire est enregistrée
@@ -325,6 +342,25 @@ function startLevel(levelId, difficultyId) {
   home?.destroy()
   home = null
   mountLevel(found, difficulty)
+}
+
+/**
+ * Monte le jardin suivant de la campagne en cours, directement, sans repasser par
+ * l'accueil : l'URL suit le nouveau jardin. Dernier jardin (ou état incomplet) :
+ * retour à la liste des jardins.
+ */
+function goNextLevel() {
+  if (game.state.screen !== 'game') return
+  const current = findLevel(game.state.level?.id)
+  if (!current) return
+  const next = current.campaign.levels[current.index + 1]
+  const difficultyId = game.state.difficulty
+  if (!next || !difficultyId) {
+    showLevels()
+    return
+  }
+  history.replaceState(null, '', `?niveau=${next.id}&difficulty=${difficultyId}`)
+  startLevel(next.id, difficultyId)
 }
 
 // Premier geste (clic ou touche) : le contexte Web Audio démarre, la cloche d'accueil
