@@ -1,4 +1,8 @@
 // Playtest de l'Epic #10 — la clairière jouable.
+// Contrat d'entrée : sans paramètre, la page affiche l'accueil de campagne ;
+// `?niveau=<levelId>` démarre directement sur le niveau (accueil ignoré). Les
+// scénarios ci-dessous visent la clairière jouable : ils passent donc toujours
+// `?niveau=1`, pour rester valables quand l'accueil s'affichera (#69).
 // Un bloc par critère d'acceptation, dans l'ordre de l'Epic. Chaque capture est décodée
 // dans la page (createImageBitmap sur le PNG renvoyé par Playwright) : aucune dépendance
 // graphique côté Node, et les couleurs comparées sont les couleurs réellement affichées.
@@ -302,7 +306,7 @@ export default async function ({ page, load, state }) {
   // décor visibles sont couvertes par le sol/le décor.
   // -------------------------------------------------------------------------
   try {
-    await load()
+    await load('?niveau=1')
     await setViewport(page, DESKTOP)
     await page.evaluate(() => window.__game.scene.background.set('#ff00ff'))
     await nextFrames(page, 2)
@@ -345,7 +349,7 @@ export default async function ({ page, load, state }) {
   // à 0,25 m, en excluant le disque du cœur qui recouvre la fin du chemin.
   // -------------------------------------------------------------------------
   try {
-    await load()
+    await load('?niveau=1')
     await setViewport(page, DESKTOP)
     const chemin = await capture(page, 'epic-10-c2-chemin')
     const level = (await state()).level
@@ -455,7 +459,7 @@ export default async function ({ page, load, state }) {
   // obéit et borne chaque glissement, aucune vue ne laisse voir le fond vide.
   // -------------------------------------------------------------------------
   try {
-    await load()
+    await load('?niveau=1')
     await setViewport(page, DESKTOP)
     await page.evaluate(() => window.__game.scene.background.set('#ff00ff'))
     await nextFrames(page, 2)
@@ -500,7 +504,7 @@ export default async function ({ page, load, state }) {
   // ips réelles : information seule, mesurés après la capture.
   // -------------------------------------------------------------------------
   try {
-    await load()
+    await load('?niveau=1')
     await setViewport(page, DESKTOP)
     const timing = await page.evaluate(() => {
       const { scene, camera, renderer } = window.__game
@@ -651,7 +655,7 @@ export default async function ({ page, load, state }) {
     const sameKeys = JSON.stringify(Object.keys(fr).sort()) === JSON.stringify(Object.keys(en).sort())
     check(sameKeys, 'critère 6 : fr.json et en.json n\'ont pas les mêmes clés')
     for (const [lang, dict] of [['fr', fr], ['en', en]]) {
-      await load(`?lang=${lang}`)
+      await load(`?lang=${lang}&niveau=1`)
       const hud = await page.evaluate(() => {
         const root = document.getElementById('ui')
         return {
@@ -694,7 +698,7 @@ export default async function ({ page, load, state }) {
     const requests = []
     const listener = (request) => requests.push(request.url())
     page.on('request', listener)
-    await load()
+    await load('?niveau=1')
     await nextFrames(page, 2)
     page.off('request', listener)
     check(requests.length > 0, 'critère 7 : aucune requête capturée, test non concluant')
