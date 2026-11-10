@@ -14,7 +14,7 @@ import { createShadow } from '../entities/shadow.js'
  * Le tableau `state.creatures` est muté en place, comme le tableau interne, pour
  * ne rien allouer à chaque image (seules les apparitions et les morts allouent).
  *
- * @param {{ scene: THREE.Scene, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void, towers?: { reset(): void } }} game
+ * @param {{ scene: THREE.Scene, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void, emit(name: string, payload?: object): void, towers?: { reset(): void } }} game
  * @param {{ level?: object, onChange?: (state: object) => void, onEnd?: (state: object) => void }} [options]
  * @returns {{ group: THREE.Group, update(dt: number): void, restart(): void, dispose(): void }}
  */
@@ -96,13 +96,14 @@ export function createWaveSystem(game, {
     onChange(state)
   }
 
-  /** Termine la partie une seule fois : victoire ou défaite. */
+  /** Termine la partie une seule fois : victoire ou défaite, chacune annoncée une fois. */
   function finish(outcome) {
     if (ended) return
     ended = true
     state.run.outcome = outcome
     if (outcome === 'victory') state.wave.phase = 'cleared'
     state.lastEvent = 'end'
+    game.emit(outcome === 'victory' ? 'victory' : 'defeat', { elapsed: state.run.elapsed })
     changed()
     onEnd(state)
   }
@@ -116,6 +117,7 @@ export function createWaveSystem(game, {
     spawned = 0
     spawnTimer = 0
     state.lastEvent = 'wave'
+    game.emit('wave-start', { index })
   }
 
   /** Compte à rebours initial, en secondes entières affichées. */
@@ -284,6 +286,9 @@ export function createWaveSystem(game, {
 
       target.record.hp = Math.max(0, target.record.hp - damage)
       tower.shots = (tower.shots ?? 0) + 1
+      // Une salve par tour et par cadence : un seul événement, quel que soit le nombre
+      // de projectiles ou de cibles du système de rendu.
+      game.emit('tower-shot', { towerId: tower.id })
       target.shadow.playHit()
       state.lastEvent = 'hit'
       cooldowns.set(tower.id, cadence)
@@ -294,14 +299,19 @@ export function createWaveSystem(game, {
 
   // --- Morts et fuites --------------------------------------------------------
 
-  /** À 0 PV : impact puis fondu, entrée retirée, objet 3D libéré en fin de fondu. */
+  /**
+   * À 0 PV : impact puis fondu, entrée retirée, objet 3D libéré en fin de fondu.
+   * `shade-repelled` est émis une seule fois par ombre : `alive` sert de garde.
+   */
   function kill(creature) {
+    if (!creature.record.alive) return
     creature.record.hp = 0
     creature.record.alive = false
     creature.shadow.playHit()
     creature.shadow.playDeath()
     removeCreature(creature)
     dying.push(creature.shadow)
+    game.emit('shade-repelled', { id: creature.record.id })
   }
 
   /** Atteinte du cœur : dégât exact, ombre retirée et libérée aussitôt. */
@@ -312,6 +322,7 @@ export function createWaveSystem(game, {
 
     state.core.hp = Math.max(0, state.core.hp - level.heart.damage)
     state.lastEvent = 'breach'
+    game.emit('heart-hit', { hp: state.core.hp, damage: level.heart.damage })
     changed()
     if (state.core.hp <= 0) finish('defeat')
   }

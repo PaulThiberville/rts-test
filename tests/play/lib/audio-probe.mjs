@@ -82,17 +82,21 @@ export function analyseAmbience(samples) {
 }
 // Déclenche `event` (pose de Pousse pour `plant`, sinon émission sur le bus) en suivant
 // l'enveloppe audible : 10 pas de plancher de nappe puis 1,5 s de mesure à 50 ms. `tail` = temps
-// du retour sous `floor + 0,5 dB` après le pic ; l'enveloppe de gain s'éteint à 1,00 s (le
-// `stop()` planifié de la vague à 1,02 s ne doit pas être mesuré).
+// du retour sous `floor + 0,5 dB` après le pic, en temps relatif au tir ; l'enveloppe de gain
+// s'éteint à 1,00 s (le `stop()` planifié de la vague à 1,02 s ne doit pas être mesuré).
+// `firedAt` est en revanche un horodatage mural (`Date.now()`), même échelle que
+// `state.audio.lastEffect.at` : les mesures successives restent comparables entre elles.
 export async function measureEffect(page, event, durationMs = 2000, stepMs = 50) {
-  const { samples, firedAt } = await page.evaluate(({ name, duration, step }) => new Promise((resolve) => {
+  const { samples, firedAt, firedWall } = await page.evaluate(({ name, duration, step }) => new Promise((resolve) => {
     const samples = []
     const start = performance.now()
     let firedAt = null
+    let firedWall = null
     const id = setInterval(() => {
       const t = performance.now() - start
       if (firedAt === null && samples.length >= 10) {
         firedAt = t
+        firedWall = Date.now()
         if (name === 'plant') {
           window.__game.towers.selectType('sprout'); window.__game.towers.place('slot-1')
         } else window.__game.emit(name)
@@ -100,12 +104,12 @@ export async function measureEffect(page, event, durationMs = 2000, stepMs = 50)
       samples.push({ t, db: window.__probe.dbFast() })
       if (t < duration) return
       clearInterval(id)
-      resolve({ samples, firedAt })
+      resolve({ samples, firedAt, firedWall })
     }, step)
   }), { name: event, duration: durationMs, step: stepMs })
   const floor = Math.max(...samples.slice(0, 10).map((s) => s.db))
   let peak = 10; let loud = 10
   for (let i = 10; i < samples.length; i++) if (samples[i].db > samples[peak].db) peak = i
   for (let i = peak; i < samples.length; i++) if (samples[i].db > floor + 0.5) loud = i
-  return { above: samples[peak].db - floor, tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt }
+  return { above: samples[peak].db - floor, tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt, firedAt: firedWall }
 }
