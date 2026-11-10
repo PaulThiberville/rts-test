@@ -1,3 +1,4 @@
+import { createIcon } from '../art/icons.js'
 import { t } from '../i18n/index.js'
 
 let hudCount = 0
@@ -59,6 +60,10 @@ export function createWaveHud(root, { onRestart, onNext, onExit } = {}) {
   const coreLine = document.createElement('p')
   coreLine.className = 'wave-hud__core'
   coreLine.setAttribute('role', 'status')
+  // Cœur décoratif devant la valeur : le libellé « Cœur 7/12 » reste le texte annoncé.
+  const coreText = document.createElement('span')
+  coreText.className = 'wave-hud__core-value'
+  coreLine.append(createIcon('heart', { size: 16, className: 'wave-hud__core-icon' }), coreText)
 
   const meter = document.createElement('div')
   meter.className = 'wave-hud__meter'
@@ -190,7 +195,7 @@ export function createWaveHud(root, { onRestart, onNext, onExit } = {}) {
     const counting = wave.phase === 'countdown'
     if (windupLine.hidden === counting) windupLine.hidden = !counting
     if (counting) setText(windupLine, t('wave.windup', { n: wave.index, s: wave.countdown }))
-    setText(coreLine, t('core.hp', { hp: core.hp, max: core.max }))
+    setText(coreText, t('core.hp', { hp: core.hp, max: core.max }))
     const ratio = core.max > 0 ? Math.min(1, Math.max(0, core.hp / core.max)) : 0
     meterFill.style.width = `${Math.round(ratio * 100)}%`
     el.dataset.phase = wave.phase ?? ''
