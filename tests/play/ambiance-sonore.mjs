@@ -91,11 +91,21 @@ export default async function ({ page, load, state }) {
     await load('?niveau=1'); await page.mouse.click(640, 360); await waitUnlocked(page)
     await waitWallClock(page, 1600) // plancher de nappe mesuré après le fondu
     const effects = []
-    for (const [event, name] of [['plant', 'plant'], ['wave-start', 'wave'], ['shade-repelled', 'repelled']]) {
+    // Le bus garde `shade-repelled` ; l'élimination joue la voix canonique `kill` (alias `repelled` abandonné).
+    for (const [event, name] of [['plant', 'plant'], ['wave-start', 'wave'], ['shade-repelled', 'kill']]) {
+      // La tour posée à `plant` tire en continu (`shoot`) : ses effets concurrents empêcheraient le
+      // retour au plancher des deux mesures suivantes. On la retire, une fois `plant` mesuré.
+      if (name === 'wave') await page.evaluate(() => window.__game.towers.reset())
       const measured = await measureEffect(page, event)
-      await page.waitForFunction((expected) => window.__game.state.audio.lastEffect?.name === expected, name, { timeout: 2000 })
-      const audio = (await state()).audio
-      effects.push({ name: audio.lastEffect.name, at: audio.lastEffect.at, tail: measured.tail })
+      // Le tir automatique des tours (`tower-shot` → `shoot`, plusieurs fois/s) peut écraser
+      // `lastEffect` entre l'émission et la lecture : on interroge le cumul monotone `sound.played`.
+      try {
+        await page.waitForFunction((expected) => window.__game.state.sound.played.includes(expected), name, { timeout: 2000 })
+      } catch {
+        const played = await page.evaluate(() => JSON.parse(JSON.stringify(window.__game.state.sound.played)))
+        throw new Error(`effet « ${name} » absent de sound.played après 2 s (played=${played.join(', ') || 'aucun'})`)
+      }
+      effects.push({ name, at: measured.firedAt, tail: measured.tail })
       check(measured.above >= 3, `critère 3 : ${name} inaudible (${measured.above.toFixed(1)} dB au-dessus de la nappe)`)
       check(measured.tail <= 1000, `critère 3 : ${name} dure ${Math.round(measured.tail)} ms > 1 s (enveloppe audible)`)
       await shot(page, `c3-${name}`)

@@ -109,19 +109,43 @@ game.state.unlocked = readUnlocked(progress.completed)
 
 const audio = createAudio({ volume: AUDIO_VOLUME, storageKey: AUDIO_VOLUME_KEY })
 
-// `state.audio` est recalculé à chaque lecture : l'état reste sérialisable et reflète
-// le contexte Web Audio (suspendu, mute, gain) sans recopie à maintenir.
-const audioState = { defaultVolume: AUDIO_VOLUME, volumeKey: AUDIO_VOLUME_KEY }
-for (const key of Object.keys(audio.getSnapshot())) {
-  Object.defineProperty(audioState, key, {
-    enumerable: true,
-    get: () => audio.getSnapshot()[key],
-  })
+/**
+ * Expose les clés d'un snapshot audio en getters : l'état observable reste
+ * sérialisable et suit le contexte Web Audio (suspendu, muet, gains) sans recopie
+ * à maintenir. Aucune valeur THREE n'entre dans `game.state`.
+ * @param {object} target objet recevant les propriétés
+ * @param {string[]} keys clés du snapshot à exposer
+ * @returns {object} l'objet complété
+ */
+function exposeSnapshot(target, keys) {
+  for (const key of keys) {
+    Object.defineProperty(target, key, {
+      enumerable: true,
+      get: () => audio.getSnapshot()[key],
+    })
+  }
+  return target
 }
-game.state.audio = audioState
+
+game.state.audio = exposeSnapshot(
+  { defaultVolume: AUDIO_VOLUME, volumeKey: AUDIO_VOLUME_KEY },
+  Object.keys(audio.getSnapshot()),
+)
+
+// Déclencheurs des neuf moments sonores : seuls les noms de `EFFECT_NAMES` (#136)
+// sont joués, la limite de 3 déclenchements/s étant imposée par `createAudio`.
+game.state.sound = exposeSnapshot(
+  { defaultVolume: AUDIO_VOLUME },
+  ['played', 'lastEffect', 'effectCount', 'resumeCount', 'families'],
+)
 
 game.on('wave-start', () => audio.play('wave'))
-game.on('shade-repelled', () => audio.play('repelled'))
+game.on('tower-shot', () => audio.play('shoot'))
+game.on('tower-upgraded', () => audio.play('upgrade'))
+game.on('shade-repelled', () => audio.play('kill'))
+game.on('heart-hit', () => audio.play('core-hit'))
+game.on('victory', () => audio.play('victory'))
+game.on('defeat', () => audio.play('defeat'))
 
 // Monté avant les autres HUD : la pastille est le premier arrêt de Tab, donc
 // atteignable en un seul appui au clavier.
@@ -197,6 +221,8 @@ function showHome() {
   home?.destroy()
   game.state.screen = 'home'
   game.state.campaign = null
+  // Chaque retour à l'accueil sonne la cloche, même sans geste supplémentaire.
+  audio.play('home')
   home = createHomeScreen(ui, { onOpen: openCampaign })
   home.update({ progress: game.state.progress })
 }
@@ -301,19 +327,35 @@ function startLevel(levelId, difficultyId) {
   mountLevel(found, difficulty)
 }
 
-// Premier geste (clic ou touche) : le contexte Web Audio peut démarrer, puis la nappe.
+// Premier geste (clic ou touche) : le contexte Web Audio démarre, la cloche d'accueil
+// sonne une fois, puis la nappe.
 let audioUnlocked = false
 function unlockAudio() {
   if (audioUnlocked) return
   audioUnlocked = true
   audio.unlock().then((ready) => {
     if (!ready) return
+    audio.play('home')
     audio.startAmbience()
     audioToggle.update(audio.getSnapshot())
   })
 }
 addEventListener('pointerdown', unlockAudio, { once: true })
 addEventListener('keydown', unlockAudio, { once: true })
+
+// Retour d'onglet : le navigateur suspend Web Audio en arrière-plan. `resume()` le
+// réveille sans nouvel appui, puis la nappe reprend si elle tournait avant le masquage.
+let ambienceWasRunning = false
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    ambienceWasRunning = audio.getSnapshot().ambienceRunning
+    return
+  }
+  audio.resume().then((ready) => {
+    if (ready && ambienceWasRunning) audio.startAmbience()
+    audioToggle.update(audio.getSnapshot())
+  })
+})
 
 /**
  * Marque le jardin courant comme terminé, met à jour la progression et les

@@ -26,7 +26,7 @@ const GHOST_SPEED = 2.2
  * système ; `game.state` reçoit un état sérialisable lu par le HUD et les playtests.
  * Toute décision passe par les entrées pointeur du canvas, sans jamais consommer
  * l'événement : le glissement de caméra de `camera-rig.js` reste intact.
- * @param {{ scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void }} game
+ * @param {{ scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void, emit(name: string, payload?: object): void }} game
  * @param {{ level?: object, towers?: object, onChange?: (state: object) => void }} [options]
  * @returns {{ group: THREE.Group, update(dt: number): void, selectType(type: string | null): void, toggleBar(open?: boolean): void, place(slotId?: string): boolean, upgrade(towerId?: number): boolean, reset(): void, dispose(): void }}
  */
@@ -348,6 +348,7 @@ export function createTowerSystem(game, {
     state.lastAction = 'upgraded'
     state.lastRefusal = null
     dirty = true
+    game.emit('tower-upgraded', { towerId: record.id })
     if (state.selectedTower === record.id) {
       selectionMarker.position.set(record.x, 0, record.z)
       selectionMarker.visible = true
