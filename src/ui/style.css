@@ -203,7 +203,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   to { opacity: 1; transform: none; }
 }
 
-/* Écran de fin : voile plein cadre, carte crème centrée, un seul bouton de 48 px. */
+/* Écran de fin : voile plein cadre, carte crème centrée, jusqu'à trois actions de 48 px. */
 .end-screen {
   position: fixed; inset: 0; z-index: 10;
   box-sizing: border-box; display: grid; place-items: center;
@@ -238,17 +238,29 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
 }
 .end-screen__time { margin-top: 0.2em; color: #4b574f; }
 
-.end-screen__replay {
-  pointer-events: auto; box-sizing: border-box; display: inline-flex;
-  align-items: center; justify-content: center;
-  min-width: 44px; min-height: 48px; margin-top: clamp(18px, 5vw, 26px);
-  padding: 0 26px; border: 2px solid #3e4a43; border-radius: 0.65rem;
-  background: #a7d9cc; color: #3e4a43;
-  font: inherit; font-size: 1rem; font-weight: 600; line-height: 1;
-  cursor: pointer; transition: background-color 160ms ease;
+/* Trois actions en victoire, deux en défaite : colonne pleine largeur, 12 px d'écart,
+   action principale en teinte sève pleine, les autres en contour. */
+.end-screen__actions {
+  display: flex; flex-direction: column; gap: 12px;
+  margin-top: clamp(18px, 5vw, 26px);
 }
-.end-screen__replay:hover { background: #b9e3d8; }
-.end-screen__replay:focus-visible { outline: 2px solid #3e4a43; outline-offset: 3px; }
+
+.end-screen__button {
+  pointer-events: auto; box-sizing: border-box; display: flex;
+  align-items: center; justify-content: center;
+  min-width: 44px; min-height: 48px; padding: 0 22px;
+  border: 2px solid #3e4a43; border-radius: 0.65rem;
+  background: transparent; color: #3e4a43;
+  font: inherit; font-size: 1rem; font-weight: 600; line-height: 1.15;
+  text-align: center; cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.end-screen__button[hidden] { display: none; }
+.end-screen__button:hover { background: rgb(110 198 181 / 18%); }
+.end-screen__button:focus-visible { outline: 2px solid #3e4a43; outline-offset: 3px; }
+
+.end-screen__button--primary { background: #6ec6b5; }
+.end-screen__button--primary:hover { background: #7fd2c1; }
 
 @keyframes end-screen-in {
   from { opacity: 0; }
@@ -258,7 +270,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
 @media (prefers-reduced-motion: reduce) {
   .wave-hud, .end-screen { animation: none; }
   .wave-hud[data-phase='countdown'] .wave-hud__windup { animation: none; }
-  .wave-hud__meter-fill, .end-screen__replay { transition: none; }
+  .wave-hud__meter-fill, .end-screen__button { transition: none; }
 }
 
 /* Écran d'accueil : voile plein cadre au-dessus du canvas, trois cartes de campagne.
