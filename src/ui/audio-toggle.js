@@ -3,13 +3,6 @@ import { t } from '../i18n/index.js'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 /**
- * Libellés du bouton : clés `audio.*` de #51, référencées indirectement tant qu'elles ne
- * sont pas dans `fr.json`. `scripts/i18n-check.mjs` ne les voit donc ni utilisées ni
- * présentes : au merge de #51, remplacer cette table par des appels `t` littéraux.
- */
-const LABEL = { unmuted: 'audio.mute', muted: 'audio.unmute' }
-
-/**
  * @param {string} name
  * @param {Record<string, string>} attrs
  * @returns {SVGElement}
@@ -66,7 +59,8 @@ export function createAudioToggle(root, { onToggle } = {}) {
     const pressed = String(muted)
     if (button.dataset.muted !== pressed) button.dataset.muted = pressed
     if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed)
-    const label = t(muted ? LABEL.muted : LABEL.unmuted)
+    // Clés littérales : `scripts/i18n-check.mjs` relie chaque clé à son usage.
+    const label = muted ? t('audio.unmute') : t('audio.mute')
     if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label)
     if (button.title !== label) button.title = label
     const next = String(level(muted ? 0 : volume))
