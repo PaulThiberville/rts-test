@@ -87,7 +87,8 @@ export default async function ({ page, load, state }) {
   })
   // Critère 3 — un effet distinct et feutré (≤ 1 s) par action, ≤ 3 déclenchements/s.
   await block(3, async () => {
-    await load(); await page.mouse.click(640, 360); await waitUnlocked(page)
+    // L'effet `plant` passe par le système de tours (`measureEffect`) : le niveau doit être monté.
+    await load('?niveau=1'); await page.mouse.click(640, 360); await waitUnlocked(page)
     await waitWallClock(page, 1600) // plancher de nappe mesuré après le fondu
     const effects = []
     for (const [event, name] of [['plant', 'plant'], ['wave-start', 'wave'], ['shade-repelled', 'repelled']]) {

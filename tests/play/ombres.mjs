@@ -314,7 +314,7 @@ export default async function ({ page, load, state }) {
   // -------------------------------------------------------------------------
   let launchDecor = null
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await installClock(page)
 
@@ -428,7 +428,7 @@ export default async function ({ page, load, state }) {
   // cœur (aucune tour posée : toutes les ombres vont au bout du chemin).
   // -------------------------------------------------------------------------
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await installClock(page)
 
@@ -589,7 +589,7 @@ export default async function ({ page, load, state }) {
   // et à 0 PV l'ombre quitte `state.creatures`.
   // -------------------------------------------------------------------------
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await installClock(page)
 
@@ -779,7 +779,7 @@ export default async function ({ page, load, state }) {
   // -------------------------------------------------------------------------
   try {
     const runDefeat = async (lang, dict, label) => {
-      await load(`?lang=${lang}`)
+      await load(`?lang=${lang}&niveau=1`)
       await setViewport(page, DESKTOP)
       await installClock(page)
       const result = await page.evaluate(({ maxSteps }) => {
@@ -863,7 +863,7 @@ export default async function ({ page, load, state }) {
   let victoryDecor = null
   try {
     const runVictory = async (lang, dict, label) => {
-      await load(`?lang=${lang}`)
+      await load(`?lang=${lang}&niveau=1`)
       await setViewport(page, DESKTOP)
       // Trois Pousses (120 sève) par l'API du jeu : même code de pose que le clic.
       const poses = await page.evaluate(() => {
@@ -1060,7 +1060,7 @@ export default async function ({ page, load, state }) {
   // -------------------------------------------------------------------------
   try {
     const label = 'critère 8'
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, MOBILE)
     await installClock(page)
 
@@ -1144,7 +1144,7 @@ export default async function ({ page, load, state }) {
     await shot(page, 'epic-49-c8-mobile-defaite')
 
     // Victoire mobile : trois Pousses, même configuration que le desktop (2:45).
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, MOBILE)
     const poses = await page.evaluate(() => {
       const game = window.__game
@@ -1214,7 +1214,7 @@ export default async function ({ page, load, state }) {
     // emplacements hors champ. On décale la cible caméra vers le bord gauche du pan
     // autorisé (valeurs de level-1.js) pour amener le chemin au centre du cadre, puis
     // on pose les Pousses sur des emplacements dont la projection est dans 390×844.
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, MOBILE)
     await installClock(page)
     const view = (await state()).level.camera
