@@ -23,6 +23,8 @@
   "end.wave": "Wave {n}/{total}",
   "end.time": "Time: {time}",
   "end.replay": "Replay",
+  "end.next": "Next level",
+  "end.exit": "Back to the gardens",
   "home.title": "Your gardens",
   "home.subtitle": "Pick a campaign and breathe.",
   "home.open": "Open",

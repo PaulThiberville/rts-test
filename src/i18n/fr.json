@@ -23,6 +23,8 @@
   "end.wave": "Vague {n}/{total}",
   "end.time": "Temps : {time}",
   "end.replay": "Rejouer",
+  "end.next": "Niveau suivant",
+  "end.exit": "Retour aux jardins",
   "home.title": "Vos jardins",
   "home.subtitle": "Choisissez une campagne et respirez.",
   "home.open": "Ouvrir",
