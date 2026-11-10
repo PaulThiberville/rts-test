@@ -5,18 +5,31 @@
 // Aucune valeur de `src/data/` n'est lue pour comparer : les seules valeurs attendues
 // sont la table du ticket #119 (sols, heures, décor) — `campaigns.js` n'est importé que
 // pour le critère de câblage, qui porte sur la structure des cartes, pas sur un réglage.
-// Captures : test-results/<préfixe issue-N->jardins-<n>.png (dossier du dépôt principal).
-import { mkdirSync } from 'node:fs'
+// Captures : `shot('<n>')` du runner → test-results/jardins-<n>.png (ticket #119). En
+// worktree parallèle, le runner écrit dans le test-results/ du worktree ; chaque capture
+// est donc aussi copiée dans test-results/ du dépôt principal, préfixée `issue-N-`,
+// comme le veut la convention du studio.
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CAMPAIGNS } from '../../src/data/campaigns.js'
 import { outputDir } from '../../scripts/lib.mjs'
 
 const MOBILE = { width: 390, height: 844 }
-const BUDGET = { drawCalls: 300, triangles: 500_000, p95: 16.7, frames: 60 }
+// Budget mobile du ticket (draw calls, triangles, p95), plus le garde-fou de
+// clairiere.mjs : médian ≤ 8,3 ms (moitié d'une image à 60 Hz). 24 images
+// mesurées par carte (p95 = 2ᵉ plus grande valeur, comme avec 30) : six jardins
+// à relever, et le drain de la file GPU après mesure pèse ~50 ms par image
+// SwiftShader, premier poste de durée du scénario.
+const BUDGET = { drawCalls: 300, triangles: 500_000, p95: 16.7, median: 8.3, frames: 24, rasterFrames: 3 }
 const PROGRESS_KEY = 'seveclaire.progress.v1'
 /** Table des attendus du ticket #119 — seules valeurs autorisées pour comparer. */
 const EXPECTED_GROUND = ['#faf3e3', '#f1ecd6', '#eaefd8', '#f6efdd', '#e4ebd4', '#d7e1c6']
-const EXPECTED_DECOR = [156, 165, 180, 195, 210, 230]
+/**
+ * Carte 1 inchangée : la table du ticket #112 donne 156 décor hors graminées pour
+ * « Le Seuil » (hors périmètre : refonte interdite). Les cinq autres lignes du
+ * tableau sont des ordres de grandeur (~165 à ~230), pas des valeurs à comparer.
+ */
+const DECOR_CARD_1 = 156
 const FAMILIES = ['tree', 'bush', 'flower', 'grass']
 /** Deux tracés sont « confondus » quand aucune de leurs polylignes ne s'écarte de 0,75 m de l'autre. */
 const PATH_CONFUSION_M = 0.75
@@ -119,6 +132,12 @@ const median = (values) => {
 
 const round = (value, digits = 2) => Number(value.toFixed(digits))
 
+/** Dimensions d'un PNG d'après son en-tête IHDR (octets 16–23), sans dépendance. */
+function pngSize(path) {
+  const header = readFileSync(path).subarray(0, 24)
+  return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) }
+}
+
 /** Attend le nombre d'images de rendu demandé (aucune attente arbitraire). */
 const nextFrames = (page, count = 2) => page.evaluate((n) => new Promise((resolve) => {
   let seen = 0
@@ -126,12 +145,11 @@ const nextFrames = (page, count = 2) => page.evaluate((n) => new Promise((resolv
   requestAnimationFrame(loop)
 }), count)
 
-export default async function ({ page, load, state }) {
+export default async function ({ page, load, state, shot }) {
   const failures = []
   const check = (condition, message) => {
     if (!condition) failures.push(message)
   }
-  const shot = (label) => page.screenshot({ path: join(results, `${prefix}${label}.png`) })
 
   const levels = CAMPAIGNS.find((campaign) => campaign.id === 'seveclaire')?.levels ?? []
 
@@ -139,12 +157,12 @@ export default async function ({ page, load, state }) {
   // Parcours — les 6 jardins depuis l'accueil, en difficulté moyenne, capture
   // 390×844 et relevé complet de l'état. La progression est amorcée pour que le
   // jardin visé soit déverrouillé : chaque jardin est ainsi inspecté indépendamment.
+  // La page est déjà chargée par le runner : chaque tour commence par son propre
+  // `load()`, aucun chargement préalable n'est nécessaire.
   // -------------------------------------------------------------------------
   const gardens = []
   try {
-    await load('?lang=fr')
     await page.setViewportSize(MOBILE)
-    await nextFrames(page, 2)
 
     for (const [index, entry] of levels.entries()) {
       await page.evaluate(({ key, completed }) => {
@@ -161,38 +179,85 @@ export default async function ({ page, load, state }) {
       await nextFrames(page, 3)
 
       const snap = await state()
-      const frame = await shot(`jardins-${index + 1}`)
-      const png = await page.evaluate(async (base64) => {
-        const response = await fetch(`data:image/png;base64,${base64}`)
-        const bitmap = await createImageBitmap(await response.blob())
-        return { width: bitmap.width, height: bitmap.height }
-      }, frame.toString('base64'))
+      // Capture nommée `jardins-<n>.png` par le helper du runner ; en worktree
+      // parallèle, copie préfixée dans le test-results/ du dépôt principal.
+      const label = String(index + 1)
+      await shot(label)
+      const capture = join('test-results', `jardins-${label}.png`)
+      if (prefix) copyFileSync(capture, join(results, `${prefix}jardins-${label}.png`))
+      const png = pngSize(capture)
 
-      // Coût CPU par image en 390×844 : update des entités + renderer.render(),
-      // mesuré dans la page, file GPU vidée hors mesure.
-      const total = await page.evaluate(({ frames }) => {
+      // Coût CPU par image en 390×844, même méthode que le critère 5 de
+      // clairiere.mjs : update des entités puis soumission renderer.render(),
+      // file GPU vidée hors mesure (gl.finish + readback 1 px). Le raster
+      // SwiftShader n'entre donc pas dans le chiffre : il est relevé à part,
+      // à titre informatif, image pleine puis scène vidée, pour situer la mesure.
+      const timing = await page.evaluate(({ frames, rasterFrames }) => {
         const { scene, camera, renderer } = window.__game
         const gl = renderer.getContext()
         const pixel = new Uint8Array(4)
         const entities = scene.children.filter((object) => typeof object.update === 'function')
+        if (!entities.length) throw new Error('aucune entité avec update dans la scène')
+        const draws = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles })
+
+        // Préchauffe hors mesure : programmes compilés, première image soumise.
         for (const entity of entities) entity.update(1 / 60)
         renderer.render(scene, camera)
-        const samples = []
+        const before = { children: scene.children.length, ...draws() }
+
+        const loop = []
+        const submit = []
+        const total = []
         for (let i = 0; i < frames; i++) {
           const start = performance.now()
           for (const entity of entities) entity.update(1 / 60)
+          const updated = performance.now()
           renderer.render(scene, camera)
-          samples.push(performance.now() - start)
+          const end = performance.now()
+          loop.push(updated - start)
+          submit.push(end - updated)
+          total.push(end - start)
         }
+        // Hors mesure : vide la file de commandes du processus GPU.
         renderer.render(scene, camera)
         gl.finish()
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
-        return samples
-      }, { frames: BUDGET.frames })
+
+        // Repère SwiftShader (information seule) : une image réellement terminée,
+        // décor plein puis entité retirée, restaurée et vérifiée juste après.
+        const image = () => {
+          const start = performance.now()
+          renderer.render(scene, camera)
+          gl.finish()
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+          return performance.now() - start
+        }
+        const decor = entities[0]
+        image()
+        const full = Array.from({ length: rasterFrames }, image)
+        scene.remove(decor)
+        image()
+        const empty = Array.from({ length: rasterFrames }, image)
+        scene.add(decor)
+        image()
+
+        return {
+          loop,
+          submit,
+          total,
+          full,
+          empty,
+          before,
+          after: { children: scene.children.length, ...draws() },
+          sameDecor: decor.parent === scene,
+        }
+      }, { frames: BUDGET.frames, rasterFrames: BUDGET.rasterFrames })
 
       // Fin de partie en difficulté moyenne : trois Pousses posées par l'API du jeu
       // (les ressources n'en financent pas quatre), puis la boucle est avancée à pas
       // fixes jusqu'au verdict. Même méthode que le critère 5 d'ambiance.mjs.
+      // maxSteps borne le cas pathologique : la plus longue partie mesurée tient
+      // 10 317 pas (173,7 s simulées), soit 84 % de cette borne.
       const run = await page.evaluate(({ maxSteps }) => {
         const game = window.__game
         game.state.paused = true
@@ -223,15 +288,22 @@ export default async function ({ page, load, state }) {
           elapsed: game.state.run.elapsed,
           steps,
         }
-      }, { maxSteps: 30_000 })
+      }, { maxSteps: 12_000 })
 
       gardens.push({
         index,
         entry,
         snap,
         png,
-        p95: percentile(total, 95),
-        median: median(total),
+        p95: percentile(timing.total, 95),
+        median: median(timing.total),
+        update: median(timing.loop),
+        submit: median(timing.submit),
+        raster: { full: median(timing.full), empty: median(timing.empty) },
+        intact: timing.sameDecor
+          && timing.after.children === timing.before.children
+          && timing.after.calls === timing.before.calls
+          && timing.after.triangles === timing.before.triangles,
         run,
       })
     }
@@ -290,23 +362,28 @@ export default async function ({ page, load, state }) {
       console.log(`[jardins] critère 2 — ${describe(garden)} : ${segments} segments ≥ ${SEGMENT_MIN_M} m, ΔE(chemin/sol) ${contrast.toFixed(1)}`)
     }
 
+    // Aucune paire confondue : chaque paire est jugée séparément. Le nombre de
+    // tracés réellement distincts se compte par groupes (relation transitive :
+    // si A≈B et B≈C, les trois tracés n'en forment qu'un), et non par
+    // `tracés - paires confondues` qui retirerait 2 au lieu d'1 par paire.
     let pairsCompared = 0
-    let confused = 0
+    const group = polylines.map((_, index) => index)
+    const root = (index) => (group[index] === index ? index : (group[index] = root(group[index])))
     for (let i = 0; i < polylines.length; i++) {
       for (let j = i + 1; j < polylines.length; j++) {
         pairsCompared++
         const distance = hausdorff(polylines[i].samples, polylines[j].samples)
         if (distance <= PATH_CONFUSION_M) {
-          confused++
           check(false,
             `critère 2 : tracés des cartes ${i + 1} et ${j + 1} confondus (Hausdorff ${distance.toFixed(2)} m ≤ ${PATH_CONFUSION_M} m)`)
+          group[root(i)] = root(j)
         }
       }
     }
+    const distinct = new Set(polylines.map((_, index) => root(index))).size
     check(pairsCompared === 15, `critère 2 : ${pairsCompared} paire(s) de tracés comparée(s) au lieu de 15`)
-    check(polylines.length >= 3 && polylines.length - confused >= 3,
-      `critère 2 : ${polylines.length - confused} tracé(s) distinct(s) au lieu de 3`)
-    console.log(`[jardins] critère 2 — ${pairsCompared} paires de tracés comparées, ${confused} confondue(s)`)
+    check(distinct >= 3, `critère 2 : ${distinct} tracé(s) réellement distinct(s) au lieu de 3`)
+    console.log(`[jardins] critère 2 — ${pairsCompared} paires de tracés comparées, ${distinct} tracé(s) distinct(s)`)
   } catch (error) {
     failures.push(`critère 2 : ${error.message}`)
   }
@@ -371,8 +448,9 @@ export default async function ({ page, load, state }) {
       check(densities[i] >= densities[i - 1] * 0.9,
         `critère 4 : densité ${densities[i - 1].toFixed(4)} → ${densities[i].toFixed(4)}/m² entre cartes ${i} et ${i + 1} : baisse > 10 %`)
     }
-    check(gardens[0] && (gardens[0].snap.decor.counts.tree + gardens[0].snap.decor.counts.bush + gardens[0].snap.decor.counts.flower) === EXPECTED_DECOR[0],
-      `critère 4 : carte 1 décor hors graminées ${gardens[0] ? gardens[0].snap.decor.counts.tree + gardens[0].snap.decor.counts.bush + gardens[0].snap.decor.counts.flower : '?'} au lieu de ${EXPECTED_DECOR[0]} (inchangé)`)
+    const cardOneDecor = gardens[0]?.snap.decor.counts
+    check(gardens[0] && (cardOneDecor.tree + cardOneDecor.bush + cardOneDecor.flower) === DECOR_CARD_1,
+      `critère 4 : carte 1 décor hors graminées ${cardOneDecor ? cardOneDecor.tree + cardOneDecor.bush + cardOneDecor.flower : '?'} au lieu de ${DECOR_CARD_1} (carte 1 inchangée, table #112)`)
     console.log(`[jardins] critère 4 — densités hors graminées : ${densities.map((value) => value.toFixed(4)).join(', ')} /m² ; ratio 6/1 ${(densities[5] / densities[0]).toFixed(2)} ; ${familiesMissing} famille(s) manquante(s)`)
   } catch (error) {
     failures.push(`critère 4 : ${error.message}`)
@@ -427,7 +505,9 @@ export default async function ({ page, load, state }) {
 
   // -------------------------------------------------------------------------
   // Critère 6 — budget mobile 390×844 sur les 6 jardins (≤ 300 draw calls,
-  // ≤ 500 000 triangles, p95 ≤ 16,7 ms) et fin de partie en difficulté moyenne.
+  // ≤ 500 000 triangles, coût CPU médian ≤ 8,3 ms et p95 ≤ 16,7 ms) et fin de
+  // partie en difficulté moyenne. Le coût CPU exclut le raster SwiftShader :
+  // il est publié à part (image pleine / vidée) pour que le chiffre soit honnête.
   // -------------------------------------------------------------------------
   try {
     for (const garden of gardens) {
@@ -440,8 +520,12 @@ export default async function ({ page, load, state }) {
         `critère 6 : ${describe(garden)} ${render.drawCalls} draw calls > ${BUDGET.drawCalls}`)
       check(render.triangles <= BUDGET.triangles,
         `critère 6 : ${describe(garden)} ${render.triangles} triangles > ${BUDGET.triangles}`)
+      check(garden.median <= BUDGET.median,
+        `critère 6 : ${describe(garden)} coût CPU médian ${garden.median.toFixed(2)} ms > ${BUDGET.median} ms (update + soumission, p95 ${garden.p95.toFixed(2)} ms)`)
       check(garden.p95 <= BUDGET.p95,
         `critère 6 : ${describe(garden)} p95 ${garden.p95.toFixed(2)} ms > ${BUDGET.p95} ms (médian ${garden.median.toFixed(2)} ms)`)
+      check(garden.intact,
+        `critère 6 : ${describe(garden)} scène modifiée par la mesure informative (décor non restauré à l'identique)`)
 
       const { run } = garden
       check(run.difficulty === 'medium',
@@ -452,7 +536,7 @@ export default async function ({ page, load, state }) {
       check(run.wave === run.total, `critère 6 : ${describe(garden)} victoire en vague ${run.wave} au lieu de ${run.total}`)
       check(run.waves.length === run.total, `critère 6 : ${describe(garden)} ${run.waves.length} vague(s) jouée(s) au lieu de ${run.total}`)
       check(run.shots > 0, `critère 6 : ${describe(garden)} aucune tour n'a tiré (${run.shots} tirs)`)
-      console.log(`[jardins] critère 6 — ${describe(garden)} : ${render.drawCalls} draw calls, ${render.triangles} triangles, p95 ${garden.p95.toFixed(2)} ms (médian ${garden.median.toFixed(2)} ms), victoire en ${run.elapsed.toFixed(0)} s simulées`)
+      console.log(`[jardins] critère 6 — ${describe(garden)} : ${render.drawCalls} draw calls, ${render.triangles} triangles, CPU médian ${garden.median.toFixed(2)} ms / p95 ${garden.p95.toFixed(2)} ms (update ${garden.update.toFixed(2)} ms, soumission ${garden.submit.toFixed(2)} ms) ; info SwiftShader image pleine ${garden.raster.full.toFixed(1)} ms / vidée ${garden.raster.empty.toFixed(1)} ms ; victoire en ${run.elapsed.toFixed(0)} s simulées`)
     }
   } catch (error) {
     failures.push(`critère 6 : ${error.message}`)
