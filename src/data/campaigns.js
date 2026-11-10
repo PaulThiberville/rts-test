@@ -2,8 +2,8 @@
  * Campagnes et jardins, en données pures (aucun import, aucun calcul exécuté).
  * Trois campagnes dans l'ordre d'affichage : Sèveclaire jouable, les deux autres visibles
  * mais verrouillées (« bientôt disponible », cf. vault/GDD/Vision.md, cadre).
- * Les six jardins de Sèveclaire réutilisent la géométrie `level-1` (clairière) tant que
- * les cartes 2 à 6 ne sont pas conçues ; la progression du joueur les distingue par leur id.
+ * Les six jardins de Sèveclaire pointent chacun leur carte assemblée : `level-1` pour le
+ * seuil, `level-2` à `level-6` pour les jardins suivants ; seuls ids et `nameKey` changent.
  * Tous les libellés vivent uniquement dans les clés i18n de `nameKey` / `descriptionKey`.
  */
 export const CAMPAIGNS = [
@@ -14,11 +14,11 @@ export const CAMPAIGNS = [
     available: true,
     levels: [
       { id: 'niveau-1', nameKey: 'campaign.seveclaire.level.1.name', map: 'level-1' },
-      { id: 'niveau-2', nameKey: 'campaign.seveclaire.level.2.name', map: 'level-1' },
-      { id: 'niveau-3', nameKey: 'campaign.seveclaire.level.3.name', map: 'level-1' },
-      { id: 'niveau-4', nameKey: 'campaign.seveclaire.level.4.name', map: 'level-1' },
-      { id: 'niveau-5', nameKey: 'campaign.seveclaire.level.5.name', map: 'level-1' },
-      { id: 'niveau-6', nameKey: 'campaign.seveclaire.level.6.name', map: 'level-1' },
+      { id: 'niveau-2', nameKey: 'campaign.seveclaire.level.2.name', map: 'level-2' },
+      { id: 'niveau-3', nameKey: 'campaign.seveclaire.level.3.name', map: 'level-3' },
+      { id: 'niveau-4', nameKey: 'campaign.seveclaire.level.4.name', map: 'level-4' },
+      { id: 'niveau-5', nameKey: 'campaign.seveclaire.level.5.name', map: 'level-5' },
+      { id: 'niveau-6', nameKey: 'campaign.seveclaire.level.6.name', map: 'level-6' },
     ],
   },
   {
