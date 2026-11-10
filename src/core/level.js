@@ -14,11 +14,32 @@ const HEART_SAMPLES = 32
 const AMBIENCE_FAMILIES = ['petals', 'fireflies']
 
 /**
+ * Bloc de densité du végétal (#114) : instances par m² de `bounds`, total et par famille.
+ * Un décor sans densité donne des zéros, jamais une erreur.
+ * @param {object} [density]
+ */
+function readDensity(density) {
+  const perFamily = {}
+  const source = density?.perFamily
+  if (source && typeof source === 'object') {
+    for (const [id, value] of Object.entries(source)) {
+      if (Number.isFinite(value)) perFamily[id] = value
+    }
+  }
+  return {
+    area: Number.isFinite(density?.area) ? density.area : 0,
+    total: Number.isFinite(density?.total) ? density.total : 0,
+    perFamily,
+  }
+}
+
+/**
  * Compteurs de décor lisibles par le playtest : familles, effectifs par famille,
  * triangles et draw calls. Un décor sans `families` donne un tableau vide, jamais une erreur.
  * @param {object} [stats]
+ * @param {object} [vegetationStats] compteurs de `createVegetation`, source de la densité
  */
-function readDecorStats(stats = {}) {
+function readDecorStats(stats = {}, vegetationStats = {}) {
   const entries = Array.isArray(stats.families) ? stats.families : []
   const families = []
   const counts = {}
@@ -40,6 +61,7 @@ function readDecorStats(stats = {}) {
     vegetalsCastShadow,
     triangles: Number.isFinite(stats.triangles) ? stats.triangles : 0,
     drawCalls: Number.isFinite(stats.drawCalls) ? stats.drawCalls : 0,
+    density: readDensity(vegetationStats.density),
   }
 }
 
@@ -113,7 +135,10 @@ export function createLevel(game, { level = LEVEL_1 } = {}) {
   game.add(ambience)
   const ambienceMoved = createMotionProbe(ambience)
 
-  const decorStats = readDecorStats(group.userData.stats)
+  const decorStats = readDecorStats(
+    group.userData.stats,
+    group.getObjectByName('vegetation')?.userData.stats,
+  )
   const ambienceStats = ambience.userData.stats
   // Mouvement observé sur la dernière image animée ; faux en pause, où `update(dt)` ne tourne plus.
   let ambienceMoving = false
@@ -127,6 +152,7 @@ export function createLevel(game, { level = LEVEL_1 } = {}) {
     counts: decorStats.counts,
     triangles: decorStats.triangles,
     drawCalls: decorStats.drawCalls,
+    density: decorStats.density,
   }
   state.ambience = {
     families: Array.isArray(ambienceStats?.families) && ambienceStats.families.length > 0
@@ -144,9 +170,12 @@ export function createLevel(game, { level = LEVEL_1 } = {}) {
     bounds: level.bounds,
     arrival: level.arrival,
     path: level.path,
+    slots: level.slots,
     heart: level.heart,
     camera: level.camera,
     palette: level.palette,
+    light: level.light,
+    decor: { families: level.decor?.families },
   }))
   state.camera = rig.state
 

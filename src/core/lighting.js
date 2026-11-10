@@ -45,7 +45,7 @@ function toHex(value, fallback) {
  * @returns {{
  *   sun: THREE.DirectionalLight,
  *   hemi: THREE.HemisphereLight,
- *   state: { shadowMap: string, radius: number, intensity: number, sun: string, sky: string, ground: string },
+ *   state: { shadowMap: string, radius: number, intensity: number, sun: string, sky: string, ground: string, hour: number|null, elevation: number, azimuth: number },
  *   dispose(): void,
  * }}
  */
@@ -115,6 +115,10 @@ export function createLighting(scene, level = LEVEL_1, renderer = null) {
       sun: sunTint,
       sky: skyTint,
       ground: groundTint,
+      // Heure du jardin : absente d'une carte qui n'en déclare pas, jamais inventée.
+      hour: Number.isFinite(light.hour) ? light.hour : null,
+      elevation,
+      azimuth,
     },
     dispose() {
       scene.remove(sun)
