@@ -381,7 +381,7 @@ export default async function ({ page, load, state }) {
       ['fr', fr, 'c1-bar-fr', 'sprout'],
       ['en', en, 'c1-bar-en', 'bloom'],
     ]) {
-      await load(`?lang=${lang}`)
+      await load(`?lang=${lang}&niveau=1`)
       await setViewport(page, DESKTOP)
       const closed = await readBar(page)
       check(closed.open === false, `critère 1 [${lang}] : la barre est ouverte au chargement`)
@@ -447,7 +447,7 @@ export default async function ({ page, load, state }) {
   // anneau illuminé (opacité 0,25 → 0,65), capture de l'emplacement et du fantôme.
   // -------------------------------------------------------------------------
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await openBar(page)
     await selectSeed(page, 'sprout')
@@ -496,7 +496,7 @@ export default async function ({ page, load, state }) {
   // state.resources strictement inchangé et aucune tour ajoutée.
   // -------------------------------------------------------------------------
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await openBar(page)
     await selectSeed(page, 'sprout')
@@ -581,7 +581,7 @@ export default async function ({ page, load, state }) {
   // -------------------------------------------------------------------------
   let posed = null
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     await openBar(page)
     await selectSeed(page, 'sprout')
@@ -726,7 +726,7 @@ export default async function ({ page, load, state }) {
   // Mecaniques.md à jour, 390×844 utilisable, aucun texte en dur.
   // -------------------------------------------------------------------------
   try {
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await setViewport(page, DESKTOP)
     const levelBefore = await page.evaluate(() => JSON.stringify(window.__game.state.level))
     const decorBefore = await decorSignature(page)
@@ -841,7 +841,7 @@ export default async function ({ page, load, state }) {
 
     // 390×844 : barre entièrement dans le viewport, entrées lisibles, pose tactile.
     await setViewport(page, MOBILE)
-    await load('?lang=fr')
+    await load('?lang=fr&niveau=1')
     await openBar(page)
     const mobileBar = await readBar(page)
     const inViewport = (rect) => rect.x >= 0 && rect.y >= 0
