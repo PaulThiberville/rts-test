@@ -79,6 +79,7 @@ export const LEVEL_1 = {
     sky: '#faf3e3',
     ground: '#b9c4ab',
     intensity: 2.1,
+    hour: 17.5,
     elevation: 0.62,
     azimuth: 0.85,
     shadowRadius: 4,
