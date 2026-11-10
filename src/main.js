@@ -33,6 +33,28 @@ const ui = document.getElementById('ui')
 const params = new URLSearchParams(location.search)
 
 /**
+ * Titre d'onglet et description de partage dans la langue courante : le HTML
+ * porte la variante FR, `?lang=en` ou un navigateur anglais affiche la variante EN.
+ * Les balises absentes sont simplement ignorées.
+ */
+function applyMeta() {
+  const title = t('meta.title')
+  const description = t('meta.description')
+  document.title = title
+  const tags = [
+    ['meta[name="description"]', description],
+    ['meta[property="og:title"]', title],
+    ['meta[property="og:description"]', description],
+    ['meta[property="og:image:alt"]', title],
+    ['meta[name="twitter:title"]', title],
+    ['meta[name="twitter:description"]', description],
+  ]
+  for (const [selector, content] of tags) {
+    document.head.querySelector(selector)?.setAttribute('content', content)
+  }
+}
+
+/**
  * `?niveau=` accepte l'id de jardin (`niveau-1`) comme sa forme courte (`1`).
  * @param {string|null} value
  * @returns {string|null} id de jardin connu, sinon null
@@ -289,6 +311,8 @@ function completeLevel() {
 }
 
 game.completeLevel = completeLevel
+
+applyMeta()
 
 if (requestedLevelId) {
   startLevel(requestedLevelId, difficultyParam ?? DIRECT_DIFFICULTY)
