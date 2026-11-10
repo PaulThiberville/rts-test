@@ -94,21 +94,31 @@ Ces familles, valeurs de lumière et densités d’ambiance sont la référence 
 
 Ton apaisant comme le reste de la clairière : synthés doux (nappes, cloches feutrées), percussion légère (bois, peaux, pas de batterie sèche). Aucun son ne doit surprendre le joueur en pause. Découle de [[Vision]] : « Sérénité d’abord », et ne sonorise que les gestes de [[Mecaniques]].
 
-Trois effets à livrer pour l’Epic #48, plus « victoire » déjà validée :
+Neuf voix synthétisées, aucun asset : les familles de timbre de `VOICE_FAMILIES` — cloche (`bell`) qui rassure, nappe (`pad`) qui respire, percussion bois (`wood`) qui ponctue — et une ligne par voix de `EFFECT_NAMES`.
 
-| Effet | Rôle | Caractère |
-|---|---|---|
-| « poser une plante-défense » (« poser une tour ») | Confirmer la pose d’une tour-plante | Cloche douce, une note montante, 200 ms |
-| « vague » | Annoncer l’arrivée des ombres | Nappe descendante discrète, 1 s, sans urgence |
-| « ombre repoussée » | Confirmer qu’une ombre recule | Cloche feutrée, durée ≤ 1 s, aucune urgence |
-| « victoire » | Clore un niveau | Trois notes de harpe montantes, récompense calme |
+| Effet | Moment | Famille (cloche/nappe/percussion bois) | Caractère | Durée |
+|---|---|---|---|---|
+| `home` — accueil | Premier geste, entrée ou retour à l’accueil | cloche (`bell`) | Cloche claire qui monte, comme une porte qu’on ouvre | ~0,5 s |
+| `plant` — pose | Poser une plante-défense (« poser une tour ») | cloche (`bell`) | Une note montante, confirmation douce | 0,2 s |
+| `upgrade` — amélioration | Améliorer une tour posée | percussion bois (`wood`) | Deux « toc » ascendants, la plante gagne un cran | ~0,3 s |
+| `shoot` — tir | Tir automatique d’une tour | percussion bois (`wood`) | « Toc » très court, feutré, ± 5 % de hauteur | ~0,1 s |
+| `kill` — ombre repoussée | Une ombre recule (alias `repelled`) | cloche (`bell`) | Cloche feutrée descendante, aucune urgence | 0,3 s |
+| `core-hit` — cœur touché | Le cœur perd des PV | nappe (`pad`) | Nappe grave qui s’enfonce, jamais percussive | ~0,5 s |
+| `wave` — vague | Annoncer une vague | nappe (`pad`) | Nappe descendante discrète, sans urgence | 1 s |
+| `victory` — victoire | Clore un niveau | cloche (`bell`) | Trois notes de harpe montantes (C5, E5, G5) | ~0,6 s |
+| `defeat` — défaite | Le cœur tombe à zéro | nappe (`pad`) | Nappe descendante résignée, sans dureté | 1 s |
 
-- Volume par défaut : 40 %, jamais plus de 50 % à la première ouverture ; le joueur ajuste ensuite.
-- Règle des impacts : ≤ 3 fois par seconde, pas de mitraillette sonore.
+- Volume par défaut : **40 %** (plage **35–50 %**) ; le joueur ajuste ensuite, la valeur est mémorisée dans le navigateur.
+- Règle des impacts : **≤ 3 déclenchements par seconde et par effet**, pas de mitraillette sonore.
+- Enveloppe commune : attaque ≥ 10 ms, décroissance ≥ 90 ms, rampe vers 0,0001 : aucun son ne claque ni ne se coupe net.
 
 ### Silence et muet
 
-Le bouton muet est atteignable au clavier (Tab puis Entrée ou Espace) et porte un libellé localisé. Muet, le gain master tombe à zéro et le jeu laisse place au silence, compris comme le jardin qui respire : aucune nappe, aucun effet. Un second appui rétablit exactement le volume précédent. Sur mobile, l’ambiance de fond est coupée par défaut ; les effets restent audibles tant que le joueur ne coupe pas le son.
+Le bouton muet est atteignable au clavier (Tab puis Entrée ou Espace) et porte un libellé localisé. Muet, le gain master tombe à **0** et le jeu laisse place au silence, compris comme le jardin qui respire : aucune nappe, aucun effet. Un second appui rétablit le volume précédent à **± 0,01** près. Sur mobile, l’ambiance de fond est coupée par défaut ; les effets restent audibles tant que le joueur ne coupe pas le son.
+
+### Reprise après mise en arrière-plan
+
+Au retour d’onglet, `resume()` réveille le contexte sans le recréer : `state === 'running'` et la nappe reprend sans rejouer la cloche d’accueil. Muet, le gain master est réappliqué à 0 : le contexte tourne, mais aucune nappe n’est audible.
 
 ## i18n
 
