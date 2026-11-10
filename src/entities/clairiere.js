@@ -1,7 +1,12 @@
+// Clairière : sol, chemin, cœur, rochers et végétation.
+// Le décor végétal vient de `entities/vegetation.js` (quatre familles instanciées, #93) ;
+// cette entité garde le terrain et la famille non végétale (rochers), puis additionne
+// les compteurs des deux dans `userData.stats`.
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { LEVEL_1 } from '../data/level-1.js'
 import { createTerrainMaterials, createDecorMaterials } from '../materials/terrain.js'
+import { createVegetationMaterials } from '../materials/vegetation.js'
+import { createVegetation } from './vegetation.js'
 
 const UP = new THREE.Vector3(0, 1, 0)
 const PATH_SEGMENTS = 96
@@ -20,41 +25,8 @@ function mulberry32(seed) {
 
 const between = (random, min, max) => min + random() * (max - min)
 
-/** Touffe d'herbe : trois lames triangulaires croisées, double face par sommet dupliqué. */
-function createGrassGeometry() {
-  const positions = []
-  for (const angle of [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3]) {
-    const cos = Math.cos(angle)
-    const sin = Math.sin(angle)
-    const rotate = (x, y) => [x * cos, y, -x * sin]
-    const left = rotate(-0.06, 0)
-    const right = rotate(0.06, 0)
-    const tip = rotate(0.11, 0.46)
-    positions.push(...left, ...right, ...tip)
-    positions.push(...left, ...tip, ...right)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.computeVertexNormals()
-  return geometry
-}
-
 /** Rocher : icosaèdre facetté posé sur le sol, écrasable par instance. */
 const ROCK_GEOMETRY = new THREE.IcosahedronGeometry(1, 0).translate(0, 1, 0)
-
-/** Buisson : deux blobs arrondis fusionnés, base au sol. */
-const BUSH_GEOMETRY = mergeGeometries([
-  new THREE.IcosahedronGeometry(0.55, 1).translate(0, 0.55, 0),
-  new THREE.IcosahedronGeometry(0.4, 0).translate(0.42, 0.38, 0.1),
-])
-
-/** Arbre : petit tronc et houppier rond, une seule silhouette lisible de loin. */
-const TREE_GEOMETRY = mergeGeometries([
-  new THREE.CylinderGeometry(0.08, 0.13, 0.9, 5, 1, true).toNonIndexed().translate(0, 0.45, 0),
-  new THREE.IcosahedronGeometry(1.1, 1).translate(0, 1.5, 0),
-])
-
-const GRASS_GEOMETRY = createGrassGeometry()
 
 /** Distance au carré d'un point au segment [a, b], en XZ. */
 function segmentDistanceSq(x, z, [ax, az], [bx, bz]) {
@@ -121,13 +93,14 @@ function createPathGeometry(points, width) {
 }
 
 /**
- * Clairière complète : sol, chemin, cœur et décor instancié hors du chemin et du cœur.
- * Le groupe est statique (aucun update) et ses compteurs sont exposés dans `userData.stats`.
+ * Clairière complète : sol, chemin, cœur, rochers instanciés et végétation des quatre
+ * familles déléguée à `createVegetation`. Le groupe est statique (son `update` est posé
+ * par `core/level.js`) et ses compteurs sont exposés dans `userData.stats`.
  * @param {{ level?: object, seed?: number }} [options]
  * @returns {THREE.Group}
  */
 export function createClairiere({ level = LEVEL_1, seed = level.decor.seed } = {}) {
-  const { bounds, path, heart, palette, decor } = level
+  const { bounds, path, heart, palette, decor, slots = [] } = level
   const random = mulberry32(seed)
   const group = new THREE.Group()
   group.name = 'clairiere'
@@ -150,12 +123,14 @@ export function createClairiere({ level = LEVEL_1, seed = level.decor.seed } = {
   )
   ground.name = 'ground'
   ground.position.set((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2)
+  ground.receiveShadow = true
   group.add(ground)
 
   const { geometry: pathGeometry, center: pathCenter } = createPathGeometry(path.points, path.width)
   const pathMesh = new THREE.Mesh(pathGeometry, terrainMaterials.path)
   pathMesh.name = 'path'
   pathMesh.position.y = 0.02
+  pathMesh.receiveShadow = true
   group.add(pathMesh)
 
   const heartMesh = new THREE.Mesh(
@@ -170,99 +145,75 @@ export function createClairiere({ level = LEVEL_1, seed = level.decor.seed } = {
   decorGroup.name = 'decor'
   group.add(decorGroup)
 
-  const pathPoints = path.points
-  const isOnPath = (x, z, clearance) =>
-    polylineDistanceSq(x, z, pathPoints) < clearance * clearance ||
-    polylineDistanceSq(x, z, pathCenter) < clearance * clearance
-  const isOnHeart = (x, z, clearance) =>
-    (x - heart.x) ** 2 + (z - heart.z) ** 2 < clearance * clearance
-
   /**
-   * Tire `count` positions hors chemin et hors cœur, avec une marge qui garde
-   * tous les sommets de l'instance dans `bounds ± skirt`.
+   * Tire `count` positions de rocher hors chemin, hors cœur et hors emplacements de tours,
+   * avec une marge qui garde tous les sommets de l'instance dans `bounds ± skirt`.
    */
-  function scatter(count, margin, spacing = 0) {
+  function scatterRocks(count, margin) {
     const clearance = path.width / 2 + 0.6 + margin
     const heartClearance = heart.radius + margin
+    const slotClearance = 1 + margin
     const spots = []
     const maxAttempts = count * 400
     for (let attempt = 0; attempt < maxAttempts && spots.length < count; attempt++) {
       const x = between(random, padded.minX + margin, padded.maxX - margin)
       const z = between(random, padded.minZ + margin, padded.maxZ - margin)
-      if (isOnPath(x, z, clearance) || isOnHeart(x, z, heartClearance)) continue
-      if (spacing && spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < spacing * spacing)) continue
+      if (polylineDistanceSq(x, z, path.points) < clearance * clearance) continue
+      if (polylineDistanceSq(x, z, pathCenter) < clearance * clearance) continue
+      if ((x - heart.x) ** 2 + (z - heart.z) ** 2 < heartClearance * heartClearance) continue
+      if (slots.some((slot) => (slot.x - x) ** 2 + (slot.z - z) ** 2 < slotClearance * slotClearance)) continue
       spots.push([x, z])
     }
     return spots
   }
 
-  /** Remplit un InstancedMesh en consommant le RNG dans un ordre fixe. */
-  function populate(name, spots, geometry, material, transform) {
-    const mesh = new THREE.InstancedMesh(geometry, material, spots.length)
-    mesh.name = name
-    mesh.castShadow = false
-    mesh.receiveShadow = false
-    const position = new THREE.Vector3()
-    const quaternion = new THREE.Quaternion()
-    const scale = new THREE.Vector3()
-    const matrix = new THREE.Matrix4()
-    spots.forEach(([x, z], index) => {
-      const { rotation, scale: [sx, sy, sz] } = transform()
-      position.set(x, 0, z)
-      quaternion.setFromAxisAngle(UP, rotation)
-      scale.set(sx, sy, sz)
-      mesh.setMatrixAt(index, matrix.compose(position, quaternion, scale))
-    })
-    decorGroup.add(mesh)
-    return mesh
-  }
-
-  const grassSpots = scatter(decor.grass, 0.2)
-  const rockSpots = scatter(decor.rocks, 1.4)
-  const bushSpots = scatter(decor.bushes, 1.1)
-  const treeSpots = scatter(decor.trees, 1.6, 2.4)
-
-  populate('grass', grassSpots, GRASS_GEOMETRY, decorMaterials.grass, () => ({
-    rotation: between(random, 0, Math.PI * 2),
-    scale: [between(random, 0.7, 1.4), between(random, 0.7, 1.4), between(random, 0.7, 1.4)],
-  }))
-  populate('rocks', rockSpots, ROCK_GEOMETRY, decorMaterials.rock, () => {
-    const x = between(random, 0.4, 1)
-    return {
-      rotation: between(random, 0, Math.PI * 2),
-      scale: [x, between(random, 0.3, 0.65), x * between(random, 0.7, 1.3)],
-    }
+  // Rochers : famille non végétale, une seule géométrie partagée, un InstancedMesh.
+  const rockSpots = scatterRocks(decor.rocks, 1.4)
+  const rocks = new THREE.InstancedMesh(ROCK_GEOMETRY, decorMaterials.rock, Math.max(rockSpots.length, 1))
+  rocks.count = rockSpots.length
+  rocks.name = 'rocks'
+  rocks.castShadow = false
+  rocks.receiveShadow = false
+  const position = new THREE.Vector3()
+  const quaternion = new THREE.Quaternion()
+  const scale = new THREE.Vector3()
+  const matrix = new THREE.Matrix4()
+  rockSpots.forEach(([x, z], index) => {
+    const size = between(random, 0.4, 1)
+    position.set(x, 0, z)
+    quaternion.setFromAxisAngle(UP, between(random, 0, Math.PI * 2))
+    scale.set(size, between(random, 0.3, 0.65), size * between(random, 0.7, 1.3))
+    rocks.setMatrixAt(index, matrix.compose(position, quaternion, scale))
   })
-  populate('bushes', bushSpots, BUSH_GEOMETRY, decorMaterials.bush, () => {
-    const s = between(random, 0.6, 1.2)
-    return {
-      rotation: between(random, 0, Math.PI * 2),
-      scale: [s, s * between(random, 0.8, 1.1), s],
-    }
-  })
-  populate('trees', treeSpots, TREE_GEOMETRY, decorMaterials.tree, () => {
-    const s = between(random, 0.85, 1.3)
-    return {
-      rotation: between(random, 0, Math.PI * 2),
-      scale: [s, s * between(random, 0.9, 1.1), s],
-    }
-  })
+  rocks.instanceMatrix.needsUpdate = true
+  rocks.computeBoundingSphere()
+  decorGroup.add(rocks)
 
-  const decorTriangles =
-    triangleCount(GRASS_GEOMETRY) * grassSpots.length +
-    triangleCount(ROCK_GEOMETRY) * rockSpots.length +
-    triangleCount(BUSH_GEOMETRY) * bushSpots.length +
-    triangleCount(TREE_GEOMETRY) * treeSpots.length
-  const triangles =
-    triangleCount(ground.geometry) +
-    triangleCount(pathGeometry) +
-    triangleCount(heartMesh.geometry) +
-    decorTriangles
+  // Végétation des quatre familles (#93) : un InstancedMesh par famille, ombres portées.
+  const vegetation = createVegetation({
+    level,
+    materials: createVegetationMaterials(palette),
+    seed,
+  })
+  decorGroup.add(vegetation)
+
+  const vegetationStats = vegetation.userData.stats
+  const rockTriangles = triangleCount(ROCK_GEOMETRY) * rockSpots.length
+  let drawCalls = 0
+  group.traverse((object) => {
+    if (object.isMesh) drawCalls++
+  })
 
   group.userData.stats = {
-    props: grassSpots.length + rockSpots.length + bushSpots.length + treeSpots.length,
-    triangles,
-    drawCalls: 3 + decorGroup.children.length,
+    props: rockSpots.length + vegetationStats.families.reduce((sum, family) => sum + family.count, 0),
+    families: vegetationStats.families,
+    triangles:
+      triangleCount(ground.geometry) +
+      triangleCount(pathGeometry) +
+      triangleCount(heartMesh.geometry) +
+      rockTriangles +
+      vegetationStats.triangles,
+    drawCalls,
   }
   return group
 }
