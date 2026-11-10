@@ -264,10 +264,22 @@ function mountLevel({ campaign, level: entry }, difficulty) {
   game.towers = towers
 
   const waveHud = createWaveHud(ui, { onRestart: () => waves.restart() })
+
+  /**
+   * Tout changement de vague, et la fin de partie : la victoire est enregistrée
+   * avant que le HUD n'affiche la modale de fin, donc sans dépendre d'un clic.
+   * `completeLevel` est idempotent : l'appel de `onChange` puis celui de `onEnd`
+   * n'écrivent qu'une fois.
+   */
+  const updateWaves = () => {
+    if (game.state.run.outcome === 'victory') completeLevel()
+    waveHud.update(game.state)
+  }
+
   const waves = createWaveSystem(game, {
     level: map,
-    onChange: () => waveHud.update(game.state),
-    onEnd: () => waveHud.update(game.state),
+    onChange: updateWaves,
+    onEnd: updateWaves,
   })
 
   session = { level, hud, back, towerBar, towers, waveHud, waves }
