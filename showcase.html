@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Vitrine d'asset (outil de développement, hors build) : utilisée par `npm run showcase`. -->
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Vitrine</title>
+    <link rel="stylesheet" href="./src/ui/style.css" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2f3a; font: 14px system-ui, sans-serif; }
+      #ui { position: fixed; inset: 0; }
+      .sizes { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+      .sizes > div { display: flex; align-items: center; justify-content: center; gap: 48px; }
+      .dark { background: #1d2433; } .light { background: #f1f5f9; }
+    </style>
+  </head>
+  <body>
+    <div id="ui"></div>
+    <script type="module" src="./scripts/showcase-page.js"></script>
+  </body>
+</html>

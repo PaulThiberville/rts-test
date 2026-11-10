@@ -411,6 +411,63 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; }
   .campaign-card, .campaign-card__open { transition: none; }
 }
 
+/* Bouton muet : pastille ronde feutrée de 44 × 44 en bas à droite, face au panneau des
+   tours-plantes et hors du ruban du chemin. Icône SVG inline : cône, deux arcs et une barre
+   oblique. `data-muted` masque les arcs ; `--audio-level` (0-1) les atténue selon le volume.
+   Même liseré sombre que les autres contrôles du HUD : net sur le sable comme sur la menthe. */
+.audio-toggle {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + clamp(8px, 2vw, 20px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(8px, 2vw, 20px));
+  box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0;
+  border: 1.5px solid #3e4a43; border-radius: 50%;
+  background: #faf3e3; color: #3e4a43;
+  pointer-events: auto; cursor: pointer;
+  /* `--audio-surface` suit le fond : le liseré du cône est peint dans cette couleur. */
+  --audio-surface: #faf3e3;
+  box-shadow: 0 4px 14px rgb(62 74 67 / 22%);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.audio-toggle[data-muted='true'] {
+  --audio-surface: #ece5d5;
+  border-color: rgb(62 74 67 / 60%); background: var(--audio-surface);
+}
+.audio-toggle:active { --audio-surface: #e4dcc9; background: var(--audio-surface); }
+
+.audio-toggle__icon { display: block; width: 26px; height: 26px; overflow: visible; }
+.audio-toggle__speaker { fill: currentColor; }
+.audio-toggle__wave {
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;
+  opacity: calc(0.3 + 0.7 * var(--audio-level, 1));
+  transition: opacity 160ms ease;
+}
+.audio-toggle[data-muted='true'] .audio-toggle__speaker {
+  /* Liseré couleur du fond (paint-order) : la barre passe sous le cône sans le découper. */
+  stroke: var(--audio-surface); stroke-width: 3.4; paint-order: stroke;
+}
+.audio-toggle__slash {
+  display: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;
+}
+.audio-toggle[data-muted='true'] .audio-toggle__wave { display: none; }
+.audio-toggle[data-muted='true'] .audio-toggle__slash { display: block; }
+
+/* Liseré crème de 2 px dans l'écart : l'anneau garde 8,4:1 sur son bord intérieur, même
+   sur le feuillage et le chemin où il ne fait que 1,6 à 2,4:1 face à la scène. */
+.audio-toggle:focus-visible {
+  outline: 2px solid #3e4a43; outline-offset: 2px;
+  box-shadow: 0 0 0 2px #faf3e3, 0 4px 14px rgb(62 74 67 / 22%);
+}
+
+@media (hover: hover) {
+  .audio-toggle:hover { --audio-surface: #f2ead8; background: var(--audio-surface); }
+  .audio-toggle[data-muted='true']:hover { --audio-surface: #e4dcc9; background: var(--audio-surface); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-toggle, .audio-toggle__wave { transition: none; }
+}
+
 /* Liste des jardins : voile plein cadre au-dessus du canvas, même palette crème/menthe/sable
    que l'accueil. Une colonne centrée : six lignes de 52 px, trois difficultés et deux actions
    tiennent dans 390×844 sans défilement ; le défilement vertical reste possible sur écran court. */
