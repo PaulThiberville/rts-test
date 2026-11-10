@@ -11,6 +11,13 @@
 // Les teintes viennent du matériau (palette du niveau) ; les nuances par pièce (tronc plus sombre,
 // lobes ombrés, pointes d'herbe plus claires, cœur de fleur) passent par les couleurs de sommet,
 // et la variation par instance par `instanceColor` : un seul matériau partagé par famille suffit.
+//
+// Placement : chaque famille pose exactement `count` instances. Quand le tirage manque de place,
+// trois paliers bornés et déterministes relâchent les contraintes — espacement, puis marge au
+// bord, puis dégagement des emplacements de tours —, jamais le chemin ni le cœur ; une grille
+// déterministe comble le reliquat. Même graine, mêmes positions.
+// `stats.density` mesure les instances par m² de `bounds` (sans `skirt`) : le total ne compte
+// que le couvert haut (arbre, buisson, fleur), ni graminées ni rochers.
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { LEVEL_1 } from '../data/level-1.js'
@@ -42,6 +49,11 @@ const FALLBACK_PALETTE = {
   stem: '#7fa27a',
 }
 
+/** Familles dont `stats.density.perFamily` publie un taux, même absentes du niveau. */
+const DENSITY_FAMILIES = ['tree', 'bush', 'flower', 'grass']
+/** Couvert haut compté dans `stats.density.total` : ni graminées (sol) ni rochers (autre entité). */
+const DENSITY_TOTAL_FAMILIES = ['tree', 'bush', 'flower']
+
 const GOLDEN_STEP = 0.6180339887498949 // φ - 1
 const SILVER_STEP = 0.4142135623730951 // √2 - 1
 const BRONZE_STEP = 0.7320508075688772 // √3 - 1
@@ -70,6 +82,8 @@ function mulberry32(seed) {
 const between = (random, min, max) => min + random() * (max - min)
 const fract = (value) => value - Math.floor(value)
 const clamp01 = (value) => Math.min(1, Math.max(0, value))
+/** Arrondi à 4 décimales des mesures exposées : même valeur affichée sur toutes les plateformes. */
+const round4 = (value) => Math.round(value * 1e4) / 1e4
 
 /** Rapport canal par canal entre deux teintes : dérive une nuance de sommet depuis la palette. */
 function tintRatio(fromHex, toHex) {
@@ -321,20 +335,69 @@ export function createVegetation({ level = LEVEL_1, materials, seed = level?.dec
   const nearSlot = (x, z, clearance) =>
     clearance > 0 && slots.some((slot) => (slot.x - x) ** 2 + (slot.z - z) ** 2 < clearance * clearance)
 
-  /** Tire `count` positions hors chemin, hors cœur et hors emplacements de tours, espacées. */
-  function scatter(count, margin, spacing, clearance) {
+  /** Aire de référence de la densité : `bounds` seul, le `skirt` de décor n'en fait pas partie. */
+  const area = round4((bounds.maxX - bounds.minX) * (bounds.maxZ - bounds.minZ))
+
+  /**
+   * Tire `count` positions hors chemin, hors cœur et hors emplacements de tours, espacées.
+   * Quatre paliers bornés relâchent tour à tour l'espacement, la marge au bord puis le
+   * dégagement des tours ; le chemin et le cœur gardent leur marge nominale à tous les paliers,
+   * et un balayage de grille déterministe comble le reliquat. Les positions ne dépendent que
+   * de la graine : même graine, mêmes positions, quel que soit le nombre de paliers franchis.
+   */
+  function placeSpots(count, margin, spacing, clearance) {
     const pathClearance = path.width / 2 + 0.6 + margin
     const heartClearance = heart.radius + margin
     const spots = []
-    const maxAttempts = count * 240 + 400
-    for (let attempt = 0; attempt < maxAttempts && spots.length < count; attempt++) {
-      const x = between(random, padded.minX + margin, padded.maxX - margin)
-      const z = between(random, padded.minZ + margin, padded.maxZ - margin)
-      if (polylineDistanceSq(x, z, path.points) < pathClearance * pathClearance) continue
-      if ((x - heart.x) ** 2 + (z - heart.z) ** 2 < heartClearance * heartClearance) continue
-      if (nearSlot(x, z, clearance)) continue
-      if (spacing && spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < spacing * spacing)) continue
-      spots.push([x, z])
+
+    /** Contraintes dures (chemin, cœur) toujours actives ; paliers pour les contraintes souples. */
+    const isFree = (x, z, keepSpacing, keepClearance) => {
+      if (polylineDistanceSq(x, z, path.points) < pathClearance * pathClearance) return false
+      if ((x - heart.x) ** 2 + (z - heart.z) ** 2 < heartClearance * heartClearance) return false
+      if (keepClearance && nearSlot(x, z, clearance)) return false
+      if (keepSpacing && spacing && spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < spacing * spacing)) {
+        return false
+      }
+      return true
+    }
+
+    const spanX = Math.max(padded.maxX - padded.minX, 1e-6)
+    const spanZ = Math.max(padded.maxZ - padded.minZ, 1e-6)
+    const stages = [
+      { spacing: true, edge: true, clearance: true, attempts: count * 240 + 400 },
+      { spacing: false, edge: true, clearance: true, attempts: count * 40 + 200 },
+      { spacing: false, edge: false, clearance: true, attempts: count * 40 + 200 },
+      { spacing: false, edge: false, clearance: false, attempts: count * 40 + 200 },
+    ]
+    for (const stage of stages) {
+      // Une marge plus large que la boîte se ramène à son centre : jamais de tirage hors bornes.
+      const edgeX = stage.edge ? Math.min(margin, spanX / 2) : 0
+      const edgeZ = stage.edge ? Math.min(margin, spanZ / 2) : 0
+      for (let attempt = 0; attempt < stage.attempts && spots.length < count; attempt++) {
+        const x = between(random, padded.minX + edgeX, padded.maxX - edgeX)
+        const z = between(random, padded.minZ + edgeZ, padded.maxZ - edgeZ)
+        if (isFree(x, z, stage.spacing, stage.clearance)) spots.push([x, z])
+      }
+      if (spots.length >= count) return spots
+    }
+
+    // Dernier recours : grille bornée sur la boîte de décor, hors chemin et hors cœur,
+    // parcourue dans un ordre fixe et jitteré, échantillonnée à pas régulier sur les cases libres.
+    const gridCells = Math.min(4096, Math.max((count - spots.length) * 8, 256))
+    const columns = Math.max(1, Math.round(Math.sqrt((gridCells * spanX) / spanZ)))
+    const rows = Math.max(1, Math.ceil(gridCells / columns))
+    const free = []
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < columns; column++) {
+        const x = padded.minX + (column + between(random, 0.2, 0.8)) * (spanX / columns)
+        const z = padded.minZ + (row + between(random, 0.2, 0.8)) * (spanZ / rows)
+        if (isFree(x, z, false, false)) free.push([x, z])
+      }
+    }
+    const missing = count - spots.length
+    const stride = free.length > missing ? free.length / missing : 1
+    for (let index = 0; index < missing && index < free.length; index++) {
+      spots.push(free[Math.floor(index * stride)])
     }
     return spots
   }
@@ -361,7 +424,7 @@ export function createVegetation({ level = LEVEL_1, materials, seed = level?.dec
     const jitter = family.tintJitter ?? 0
     const margin = footprintOf(geometry) * scaleMax
     const clearance = family.id === 'tree' || family.id === 'bush' ? 1.1 : 0
-    const spots = scatter(family.count ?? 0, margin, family.spacing ?? 0, clearance)
+    const spots = placeSpots(family.count ?? 0, margin, family.spacing ?? 0, clearance)
 
     const mesh = new THREE.InstancedMesh(geometry, material, Math.max(spots.length, 1))
     mesh.count = spots.length
@@ -415,10 +478,22 @@ export function createVegetation({ level = LEVEL_1, materials, seed = level?.dec
     })
   }
 
+  const counts = {}
+  for (const entry of entries) counts[entry.id] = entry.count
+  const densityOf = (ids) =>
+    area > 0 ? round4(ids.reduce((sum, id) => sum + (counts[id] ?? 0), 0) / area) : 0
+  const perFamily = {}
+  for (const id of DENSITY_FAMILIES) perFamily[id] = densityOf([id])
+
   group.userData.stats = {
     families: entries,
     triangles: entries.reduce((sum, entry) => sum + entry.triangles, 0),
     drawCalls: group.children.length,
+    density: {
+      area,
+      total: densityOf(DENSITY_TOTAL_FAMILIES),
+      perFamily,
+    },
   }
   return group
 }

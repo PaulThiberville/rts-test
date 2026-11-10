@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid meet">
+  <title>La Clairière de Sèveclaire</title>
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#faf3e3"/>
+      <stop offset="0.55" stop-color="#f9eed9"/>
+      <stop offset="1" stop-color="#f7e2c4"/>
+    </linearGradient>
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="#f6d9a8" stop-opacity="0.8"/>
+      <stop offset="0.55" stop-color="#f6d9a8" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#f6d9a8" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Houppier : ombrage très doux, du vert éclairé vers le vert de palette -->
+    <linearGradient id="feuillage" gradientUnits="userSpaceOnUse" x1="46" y1="-58" x2="-30" y2="62">
+      <stop offset="0" stop-color="#9cc4a6"/>
+      <stop offset="1" stop-color="#86b090"/>
+    </linearGradient>
+    <g id="touffe" fill="none" stroke-width="3.6" stroke-linecap="round">
+      <path d="M0 0C-3 -9 -8 -15 -13 -18"/>
+      <path d="M0 0C-1 -10 -4 -19 -5 -26"/>
+      <path d="M0 0C1 -10 1 -19 2 -28"/>
+      <path d="M0 0C4 -9 8 -14 11 -17"/>
+      <path d="M0 0C6 -5 10 -9 14 -10"/>
+    </g>
+    <g id="buisson">
+      <circle cx="-30" cy="-6" r="30"/>
+      <circle cx="0" cy="-20" r="34"/>
+      <circle cx="31" cy="-5" r="29"/>
+      <circle cx="-14" cy="14" r="26"/>
+      <circle cx="16" cy="14" r="25"/>
+    </g>
+    <g id="houppier">
+      <circle cx="-34" cy="-14" r="40"/>
+      <circle cx="20" cy="-24" r="36"/>
+      <circle cx="40" cy="16" r="34"/>
+      <circle cx="-18" cy="24" r="37"/>
+    </g>
+    <g id="fleur">
+      <circle cx="0" cy="-13" r="12.5"/>
+      <circle cx="12.4" cy="-4" r="12.5"/>
+      <circle cx="7.6" cy="10.5" r="12.5"/>
+      <circle cx="-7.6" cy="10.5" r="12.5"/>
+      <circle cx="-12.4" cy="-4" r="12.5"/>
+      <circle cx="0" cy="0" r="7.8" fill="#e3d4f0"/>
+    </g>
+  </defs>
+
+  <!-- Ciel d'aube douce, soleil bas et chaud -->
+  <rect width="1200" height="630" fill="url(#ciel)"/>
+  <circle cx="884" cy="196" r="250" fill="url(#halo)"/>
+  <circle cx="884" cy="196" r="46" fill="#f6d9a8"/>
+
+  <!-- Collines lointaines, teintes de palette éclaircies vers le ciel -->
+  <path d="M0 356C96 318 208 306 306 326 402 346 470 300 574 292 692 282 764 332 872 336 984 340 1084 310 1200 298V630H0Z" fill="#dce5ca"/>
+  <g fill="#cfdcc6">
+    <circle cx="96" cy="330" r="15"/><circle cx="124" cy="324" r="19"/><circle cx="152" cy="332" r="13"/>
+    <circle cx="604" cy="306" r="12"/><circle cx="628" cy="300" r="16"/><circle cx="652" cy="308" r="11"/>
+    <circle cx="1058" cy="322" r="14"/><circle cx="1082" cy="316" r="18"/>
+  </g>
+  <path d="M0 414C142 380 254 372 384 396 506 418 606 386 736 378 866 370 984 406 1104 402 1144 400 1174 396 1200 392V630H0Z" fill="#cbddbd"/>
+  <g fill="#b7d3ac">
+    <circle cx="200" cy="394" r="16"/><circle cx="226" cy="388" r="20"/><circle cx="252" cy="396" r="14"/>
+    <circle cx="880" cy="386" r="15"/><circle cx="904" cy="380" r="19"/>
+  </g>
+
+  <!-- Clairière : sol de la clairière, puis tapis d'herbe au premier plan -->
+  <path d="M0 476C150 456 268 470 402 486 540 502 668 470 800 468 936 466 1058 492 1200 472V630H0Z" fill="#b7d3ac"/>
+  <ellipse cx="926" cy="512" rx="320" ry="104" fill="#f6d9a8" opacity="0.2"/>
+  <path d="M0 566C130 542 250 568 384 578 520 588 640 558 776 560 910 562 1058 588 1200 566V630H0Z" fill="#a9c8a0"/>
+
+
+  <!-- Arbres de premier plan, houppiers en quatre lobes -->
+  <g>
+    <ellipse cx="148" cy="504" rx="120" ry="20" fill="#77906a" opacity="0.12"/>
+    <rect x="128" y="396" width="30" height="118" rx="15" fill="#77906a"/>
+    <use href="#houppier" fill="url(#feuillage)" transform="translate(142 336) rotate(-7) scale(1.55)"/>
+  </g>
+  <g>
+    <ellipse cx="1058" cy="516" rx="112" ry="19" fill="#77906a" opacity="0.12"/>
+    <rect x="1044" y="422" width="28" height="104" rx="14" fill="#77906a"/>
+    <use href="#houppier" fill="url(#feuillage)" transform="translate(1058 366) scale(-1.34 1.34)"/>
+  </g>
+
+  <!-- Arbres d'arrière-plan -->
+  <g>
+    <rect x="322" y="420" width="18" height="62" rx="9" fill="#77906a" opacity="0.85"/>
+    <use href="#houppier" fill="#a3c2a9" transform="translate(330 396) rotate(9) scale(0.78)"/>
+  </g>
+  <g>
+    <rect x="806" y="396" width="16" height="54" rx="8" fill="#77906a" opacity="0.85"/>
+    <use href="#houppier" fill="#a3c2a9" transform="translate(814 376) rotate(-8) scale(0.68)"/>
+  </g>
+
+  <!-- Masses de buissons -->
+  <use href="#buisson" fill="#b7d3ac" transform="translate(78 604) scale(1.15)"/>
+  <use href="#buisson" fill="#b7d3ac" transform="translate(246 622) scale(0.9)"/>
+  <use href="#buisson" fill="#b7d3ac" transform="translate(1124 600) scale(1.1)"/>
+  <use href="#buisson" fill="#b7d3ac" transform="translate(958 628) scale(0.95)"/>
+  <use href="#buisson" fill="#b7d3ac" transform="translate(436 630) scale(0.7)"/>
+  <g>
+    <ellipse cx="708" cy="500" rx="34" ry="8" fill="#77906a" opacity="0.1"/>
+    <use href="#buisson" fill="#a9c8a0" transform="translate(708 470) scale(0.7)"/>
+  </g>
+
+  <!-- Graminées du tapis de sol -->
+  <g stroke="#a9c8a0">
+    <use href="#touffe" transform="translate(60 598) scale(1.1)"/>
+    <use href="#touffe" transform="translate(190 578) scale(0.85)"/>
+    <use href="#touffe" transform="translate(356 566) scale(0.7)"/>
+    <use href="#touffe" transform="translate(690 560) scale(0.8)"/>
+    <use href="#touffe" transform="translate(1012 574) scale(0.9)"/>
+    <use href="#touffe" transform="translate(1162 566) scale(0.75)"/>
+    <use href="#touffe" transform="translate(770 606) scale(0.8)"/>
+    <use href="#touffe" transform="translate(818 592) scale(0.85)"/>
+  </g>
+  <g stroke="#c2c083">
+    <use href="#touffe" transform="translate(140 630) scale(0.95)"/>
+    <use href="#touffe" transform="translate(352 614) scale(0.75)"/>
+    <use href="#touffe" transform="translate(824 622) scale(0.9)"/>
+    <use href="#touffe" transform="translate(1078 634) scale(0.8)"/>
+  </g>
+
+  <!-- Fleurs, corolle de cinq pétales et cœur lavande -->
+  <g>
+    <path d="M300 632C294 598 300 558 314 540" stroke="#77906a" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <path d="M305 598C288 594 276 582 272 568 288 568 302 580 305 598Z" fill="#77906a"/>
+    <path d="M309 580C326 576 338 564 342 550 326 550 312 562 309 580Z" fill="#77906a"/>
+    <use href="#fleur" fill="#edb8c6" transform="translate(316 514) scale(1.55)"/>
+  </g>
+  <g>
+    <path d="M902 632C898 606 902 576 912 562" stroke="#77906a" stroke-width="6" stroke-linecap="round" fill="none"/>
+    <path d="M905 604C892 600 883 591 880 580 892 580 903 589 905 604Z" fill="#77906a"/>
+    <use href="#fleur" fill="#edb8c6" transform="translate(914 544) scale(1.15)"/>
+  </g>
+  <g>
+    <path d="M556 632C554 616 556 600 562 592" stroke="#77906a" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <use href="#fleur" fill="#edb8c6" transform="translate(564 584) scale(0.68)"/>
+  </g>
+  <g>
+    <path d="M832 632C829 612 832 592 840 581" stroke="#77906a" stroke-width="5" stroke-linecap="round" fill="none"/>
+    <use href="#fleur" fill="#edb8c6" transform="translate(842 568) scale(0.9)"/>
+  </g>
+  <g>
+    <path d="M1108 632C1105 612 1108 592 1114 582" stroke="#77906a" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <use href="#fleur" fill="#edb8c6" transform="translate(1114 570) scale(0.75)"/>
+  </g>
+
+  <!-- Rochers -->
+  <g fill="#cfc8bb">
+    <ellipse cx="664" cy="608" rx="15" ry="9"/>
+    <ellipse cx="688" cy="600" rx="8" ry="5"/>
+    <ellipse cx="272" cy="600" rx="12" ry="7"/>
+  </g>
+
+  <!-- Ombre douce au pied des fleurs -->
+  <g fill="#77906a" opacity="0.1">
+    <ellipse cx="300" cy="628" rx="24" ry="6"/>
+    <ellipse cx="902" cy="628" rx="18" ry="5"/>
+    <ellipse cx="832" cy="630" rx="14" ry="4"/>
+    <ellipse cx="1108" cy="630" rx="12" ry="4"/>
+  </g>
+
+  <!-- Pétales qui dérivent et lucioles -->
+  <g fill="#f0d6de" opacity="0.9">
+    <ellipse cx="212" cy="188" rx="11" ry="6" transform="rotate(-24 212 188)"/>
+    <ellipse cx="470" cy="120" rx="9" ry="5" transform="rotate(18 470 120)"/>
+    <ellipse cx="706" cy="228" rx="10" ry="5.5" transform="rotate(-38 706 228)"/>
+    <ellipse cx="1010" cy="150" rx="8" ry="4.5" transform="rotate(26 1010 150)"/>
+    <ellipse cx="92" cy="146" rx="8" ry="4.5" transform="rotate(34 92 146)"/>
+    <ellipse cx="286" cy="86" rx="7" ry="4" transform="rotate(-8 286 86)"/>
+  </g>
+  <g fill="#e6bacb" opacity="0.85">
+    <ellipse cx="596" cy="96" rx="8" ry="4.5" transform="rotate(-12 596 96)"/>
+    <ellipse cx="880" cy="330" rx="9" ry="5" transform="rotate(32 880 330)"/>
+    <ellipse cx="120" cy="330" rx="8" ry="4.5" transform="rotate(-30 120 330)"/>
+  </g>
+  <g fill="#f3dce6" opacity="0.8">
+    <ellipse cx="330" cy="238" rx="7" ry="4" transform="rotate(44 330 238)"/>
+    <ellipse cx="1090" cy="238" rx="9" ry="5" transform="rotate(-16 1090 238)"/>
+  </g>
+  <g fill="#f2c66d">
+    <circle cx="432" cy="480" r="3.6"/><circle cx="432" cy="480" r="12" opacity="0.22"/>
+    <circle cx="742" cy="418" r="3.2"/><circle cx="742" cy="418" r="11" opacity="0.2"/>
+    <circle cx="986" cy="494" r="3.8"/><circle cx="986" cy="494" r="13" opacity="0.22"/>
+    <circle cx="180" cy="440" r="3"/><circle cx="180" cy="440" r="10" opacity="0.2"/>
+  </g>
+</svg>
