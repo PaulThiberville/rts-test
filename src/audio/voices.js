@@ -1,12 +1,38 @@
 /**
- * Voix synthétisées, aucun asset : nappe continue et trois retours d'action.
- * Toutes les enveloppes utilisent des rampes exponentielles vers 0,0001 (jamais 0)
- * et chaque nœud éphémère est arrêté puis déconnecté : pas d'accumulation.
+ * Neuf voix synthétisées, aucun asset : la nappe continue et les retours d'action.
+ * Trois familles de timbre — cloche (`bell`), nappe (`pad`), percussion bois (`wood`) —
+ * partagent les mêmes garde-fous : enveloppe à attaque ≥ 10 ms et décroissance ≥ 90 ms,
+ * rampes exponentielles vers 0,0001 (jamais 0), chaque nœud éphémère arrêté puis
+ * déconnecté : aucune coupure sèche, aucune accumulation.
  */
-export const EFFECT_NAMES = ['plant', 'wave', 'repelled']
+export const EFFECT_NAMES = ['home', 'plant', 'upgrade', 'shoot', 'kill', 'core-hit', 'wave', 'victory', 'defeat']
+
+/** Famille de timbre de chaque effet : la cloche rassure, le bois ponctue, la nappe respire. */
+export const VOICE_FAMILIES = {
+  home: 'bell',
+  plant: 'bell',
+  upgrade: 'wood',
+  shoot: 'wood',
+  kill: 'bell',
+  'core-hit': 'pad',
+  wave: 'pad',
+  victory: 'bell',
+  defeat: 'pad',
+}
+
+/**
+ * Nom de l'Epic #48 encore appelé par `main.js` tant que #140 n'a pas rebranché
+ * les neuf déclencheurs : « ombre repoussée » joue la voix `kill`.
+ * Ces alias ne font pas partie de `EFFECT_NAMES` et ne créent aucune voix propre.
+ */
+export const LEGACY_EFFECT_NAMES = { repelled: 'kill' }
 
 /** Plancher d'enveloppe : une rampe exponentielle ne peut pas viser 0. */
 const MIN_GAIN = 0.0001
+
+/** Attaque minimale (10 ms) et décroissance minimale (90 ms) : aucun son ne claque. */
+const MIN_ATTACK = 0.01
+const MIN_DECAY = 0.09
 
 /** Niveau intrinsèque de la nappe, avant l'ajout du LFO. */
 const AMBIENCE_LEVEL = 0.08
@@ -20,9 +46,17 @@ const AMBIENCE_LFO_HZ = 0.05
 const AMBIENCE_FADE_IN = 1.5
 const AMBIENCE_FADE_OUT = 0.7
 
+/** Durée du bruit de bois partagé par les voix `wood`, en secondes. */
+const NOISE_SECONDS = 0.25
+
+/** Variation de hauteur ±5 % : les sons fréquents ne deviennent jamais mécaniques. */
+function vary() {
+  return 0.95 + Math.random() * 0.1
+}
+
 /**
  * Arrête les sources à `stopAt` puis déconnecte tous les nœuds de la voix.
- * `nodes` doit contenir au moins un nœud muni de `stop()` (un oscillateur).
+ * `nodes` doit contenir au moins un nœud muni de `stop()` (oscillateur ou buffer).
  */
 function release(nodes, stopAt) {
   const sources = nodes.filter((node) => typeof node.stop === 'function')
@@ -36,6 +70,19 @@ function release(nodes, stopAt) {
 }
 
 /**
+ * Pose une enveloppe douce sur un gain et renvoie l'instant d'extinction.
+ * Attaque et décroissance sont bornées aux minima : jamais de rampe instantanée.
+ */
+function envelope(gain, now, attack, peak, decay) {
+  const peakAt = now + Math.max(attack, MIN_ATTACK)
+  const endAt = peakAt + Math.max(decay, MIN_DECAY)
+  gain.gain.setValueAtTime(MIN_GAIN, now)
+  gain.gain.exponentialRampToValueAtTime(peak, peakAt)
+  gain.gain.exponentialRampToValueAtTime(MIN_GAIN, endAt)
+  return endAt
+}
+
+/**
  * @param {{ context: AudioContext, destination: AudioNode }} options
  * @returns {{ start(): boolean, stop(): boolean, play(name: string): boolean, readonly ambienceRunning: boolean, dispose(): void }}
  */
@@ -43,6 +90,17 @@ export function createVoices({ context, destination }) {
   let pad = null
   let running = false
   let disposed = false
+  /** Bruit blanc court, créé une seule fois par contexte et partagé par les voix bois. */
+  let noiseBuffer = null
+
+  function getNoiseBuffer() {
+    if (noiseBuffer) return noiseBuffer
+    const length = Math.ceil(context.sampleRate * NOISE_SECONDS)
+    noiseBuffer = context.createBuffer(1, length, context.sampleRate)
+    const data = noiseBuffer.getChannelData(0)
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1
+    return noiseBuffer
+  }
 
   /** Nappe : deux triangles et une sinusoïde détunés, filtrés, à respiration ≤ 1 dB. */
   function start() {
@@ -109,103 +167,206 @@ export function createVoices({ context, destination }) {
     return true
   }
 
-  /** Cloche douce montante, 200 ms, variation de hauteur ±5 % pour éviter la répétition mécanique. */
-  function playPlant(now) {
-    const variation = 0.95 + Math.random() * 0.1
-    const oscillator = context.createOscillator()
-    oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(523.25 * variation, now)
-    oscillator.frequency.exponentialRampToValueAtTime(783.99 * variation, now + 0.2)
-
-    const partial = context.createOscillator()
-    partial.type = 'sine'
-    partial.frequency.setValueAtTime(1046.5 * variation, now)
-    partial.frequency.exponentialRampToValueAtTime(1567.98 * variation, now + 0.2)
-    const partialGain = context.createGain()
-    partialGain.gain.value = 0.18
+  /**
+   * Cloche : fondamentale triangle et partiels inharmoniques adoucis par un passe-bas.
+   * Le glissando de hauteur reste lent (attaque + décroissance) : jamais de coup de cloche.
+   */
+  function playBell(now, { frequency, endFrequency = frequency, filterHz, peak, attack = 0.014, decay, partials = [2.01, 2.98] }) {
+    const variation = vary()
+    const from = frequency * variation
+    const to = endFrequency * variation
+    const glideAt = now + Math.max(attack, MIN_ATTACK) + Math.max(decay, MIN_DECAY)
 
     const gain = context.createGain()
-    gain.gain.setValueAtTime(MIN_GAIN, now)
-    gain.gain.exponentialRampToValueAtTime(0.28, now + 0.015)
-    gain.gain.exponentialRampToValueAtTime(MIN_GAIN, now + 0.2)
-
-    oscillator.connect(gain)
-    partial.connect(partialGain)
-    partialGain.connect(gain)
+    const stopAt = envelope(gain, now, attack, peak, decay)
     gain.connect(destination)
-    // `stop()` n'est légal qu'après un démarrage : sans ces start(), release()
-    // lèverait InvalidStateError et la cloche resterait muette.
-    oscillator.start(now)
-    partial.start(now)
-    release([oscillator, partial, partialGain, gain], now + 0.21)
+
+    const filter = context.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = filterHz
+    filter.Q.value = 0.7
+    filter.connect(gain)
+
+    const nodes = [filter, gain]
+    const body = context.createOscillator()
+    body.type = 'triangle'
+    body.frequency.setValueAtTime(from, now)
+    body.frequency.exponentialRampToValueAtTime(to, glideAt)
+    body.connect(filter)
+    body.start(now)
+    nodes.push(body)
+
+    for (let i = 0; i < partials.length; i++) {
+      const ratio = partials[i]
+      const partial = context.createOscillator()
+      partial.type = 'sine'
+      partial.frequency.setValueAtTime(from * ratio, now)
+      partial.frequency.exponentialRampToValueAtTime(to * ratio, glideAt)
+      const mix = context.createGain()
+      mix.gain.value = 0.28 / ratio
+      partial.connect(mix)
+      mix.connect(filter)
+      partial.start(now)
+      nodes.push(partial, mix)
+    }
+
+    release(nodes, stopAt + 0.02)
   }
 
-  /** Nappe descendante discrète de 1 s, sans urgence : annonce la vague d'ombres. */
-  function playWave(now) {
-    const low = context.createOscillator()
-    low.type = 'triangle'
-    low.frequency.setValueAtTime(196, now)
-    low.frequency.exponentialRampToValueAtTime(146.83, now + 1)
+  /**
+   * Nappe : deux ou trois oscillateurs détunés qui glissent ensemble derrière un
+   * passe-bas descendant. Attaque longue : le son s'installe, il ne tombe pas sur le joueur.
+   */
+  function playPad(now, { frequency, endFrequency, filterFrom, filterTo, peak, attack, decay, layers = [
+    { ratio: 1, type: 'triangle', gain: 0.7 },
+    { ratio: 1.5, type: 'sine', gain: 0.3 },
+  ] }) {
+    const glideAt = now + Math.max(attack, MIN_ATTACK) + Math.max(decay, MIN_DECAY)
 
-    const lower = context.createOscillator()
-    lower.type = 'sine'
-    lower.frequency.setValueAtTime(146.83, now)
-    lower.frequency.exponentialRampToValueAtTime(110, now + 1)
+    const gain = context.createGain()
+    const stopAt = envelope(gain, now, attack, peak, decay)
+    gain.connect(destination)
 
     const filter = context.createBiquadFilter()
     filter.type = 'lowpass'
     filter.Q.value = 0.7
-    filter.frequency.setValueAtTime(1400, now)
-    filter.frequency.exponentialRampToValueAtTime(500, now + 1)
-
-    const gain = context.createGain()
-    gain.gain.setValueAtTime(MIN_GAIN, now)
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.18)
-    gain.gain.exponentialRampToValueAtTime(MIN_GAIN, now + 1)
-
-    low.connect(filter)
-    lower.connect(filter)
+    filter.frequency.setValueAtTime(filterFrom, now)
+    filter.frequency.exponentialRampToValueAtTime(filterTo, glideAt)
     filter.connect(gain)
-    gain.connect(destination)
-    // Démarrage obligatoire avant l'arrêt planifié par release().
-    low.start(now)
-    lower.start(now)
-    release([low, lower, filter, gain], now + 1.02)
+
+    const nodes = [filter, gain]
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i]
+      const oscillator = context.createOscillator()
+      oscillator.type = layer.type
+      oscillator.frequency.setValueAtTime(frequency * layer.ratio, now)
+      oscillator.frequency.exponentialRampToValueAtTime(endFrequency * layer.ratio, glideAt)
+      oscillator.detune.value = i % 2 === 0 ? -5 : 5
+      const mix = context.createGain()
+      mix.gain.value = layer.gain
+      oscillator.connect(mix)
+      mix.connect(filter)
+      oscillator.start(now)
+      nodes.push(oscillator, mix)
+    }
+
+    release(nodes, stopAt + 0.02)
   }
 
-  /** Cloche feutrée « ombre repoussée » : filtre bas, extinction 280 ms (retour d'action), hauteur ±5 %. */
-  function playRepelled(now) {
-    const variation = 0.95 + Math.random() * 0.1
-    const oscillator = context.createOscillator()
-    oscillator.type = 'triangle'
-    oscillator.frequency.setValueAtTime(392 * variation, now)
-    oscillator.frequency.exponentialRampToValueAtTime(329.63 * variation, now + 0.28)
-
-    const filter = context.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 620
-    filter.Q.value = 0.8
+  /**
+   * Percussion bois : corps triangulaire filtré + souffle de bruit dans un filtre à résonance.
+   * L'enveloppe adoucit l'attaque (≥ 10 ms) : c'est un « toc » feutré, pas une caisse claire.
+   */
+  function playWood(now, { frequency, endFrequency, filterHz, peak, attack = 0.012, decay, noisePeak }) {
+    const variation = vary()
+    const glideAt = now + Math.max(attack, MIN_ATTACK) + Math.max(decay, MIN_DECAY)
 
     const gain = context.createGain()
-    gain.gain.setValueAtTime(MIN_GAIN, now)
-    gain.gain.exponentialRampToValueAtTime(0.14, now + 0.02)
-    gain.gain.exponentialRampToValueAtTime(MIN_GAIN, now + 0.28)
-
-    oscillator.connect(filter)
-    filter.connect(gain)
+    const stopAt = envelope(gain, now, attack, peak, decay)
     gain.connect(destination)
-    // Démarrage avant l'arrêt planifié : sinon InvalidStateError, effet muet.
-    oscillator.start(now)
-    release([oscillator, filter, gain], now + 0.3)
+
+    const body = context.createOscillator()
+    body.type = 'triangle'
+    body.frequency.setValueAtTime(frequency * variation, now)
+    body.frequency.exponentialRampToValueAtTime(endFrequency * variation, glideAt)
+    const bodyFilter = context.createBiquadFilter()
+    bodyFilter.type = 'lowpass'
+    bodyFilter.frequency.value = filterHz
+    bodyFilter.Q.value = 1.1
+    body.connect(bodyFilter)
+    bodyFilter.connect(gain)
+    body.start(now)
+
+    const noise = context.createBufferSource()
+    noise.buffer = getNoiseBuffer()
+    const band = context.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.setValueAtTime(filterHz * 1.6 * variation, now)
+    band.frequency.exponentialRampToValueAtTime(filterHz * 1.1 * variation, glideAt)
+    band.Q.value = 2.2
+    const noiseGain = context.createGain()
+    envelope(noiseGain, now, attack, noisePeak, decay)
+    noise.connect(band)
+    band.connect(noiseGain)
+    noiseGain.connect(destination)
+    noise.start(now)
+
+    release([body, bodyFilter, gain, noise, band, noiseGain], stopAt + 0.02)
+  }
+
+  /** Une fonction par effet : mêmes noms que `EFFECT_NAMES`, aucun nom hors contrat. */
+  const builders = {
+    /** Accueil : cloche claire qui monte doucement, comme une porte qu'on ouvre. */
+    home(now) {
+      playBell(now, { frequency: 392, endFrequency: 523.25, filterHz: 2200, peak: 0.14, attack: 0.016, decay: 0.44 })
+    },
+    /** Pose : cloche douce, une note montante, 200 ms (direction artistique). */
+    plant(now) {
+      playBell(now, { frequency: 523.25, endFrequency: 783.99, filterHz: 3200, peak: 0.24, attack: 0.015, decay: 0.19, partials: [2.01] })
+    },
+    /** Amélioration : deux « toc » de bois ascendantes, une plante qui grandit d'un cran. */
+    upgrade(now) {
+      playWood(now, { frequency: 262, endFrequency: 330, filterHz: 780, peak: 0.17, attack: 0.012, decay: 0.13, noisePeak: 0.1 })
+      playWood(now + 0.11, { frequency: 330, endFrequency: 392, filterHz: 900, peak: 0.16, attack: 0.012, decay: 0.16, noisePeak: 0.09 })
+    },
+    /** Tir : « toc » de bois très court, feutré et fréquent (±5 % de hauteur). */
+    shoot(now) {
+      playWood(now, { frequency: 330, endFrequency: 262, filterHz: 1200, peak: 0.14, attack: 0.01, decay: 0.1, noisePeak: 0.08 })
+    },
+    /** Élimination : cloche feutrée descendante, ≤ 1 s, aucune urgence. */
+    kill(now) {
+      playBell(now, { frequency: 392, endFrequency: 329.63, filterHz: 620, peak: 0.15, attack: 0.02, decay: 0.28, partials: [2.0] })
+    },
+    /** Dégât au cœur : nappe grave qui s'enfonce, jamais percussive. */
+    'core-hit'(now) {
+      playPad(now, { frequency: 98, endFrequency: 82.41, filterFrom: 520, filterTo: 300, peak: 0.18, attack: 0.09, decay: 0.42 })
+    },
+    /** Vague : nappe descendante discrète de 1 s, sans urgence. */
+    wave(now) {
+      playPad(now, {
+        frequency: 196,
+        endFrequency: 146.83,
+        filterFrom: 1400,
+        filterTo: 500,
+        peak: 0.16,
+        attack: 0.18,
+        decay: 0.82,
+        layers: [
+          { ratio: 1, type: 'triangle', gain: 0.7 },
+          { ratio: 0.75, type: 'sine', gain: 0.5 },
+        ],
+      })
+    },
+    /** Victoire : trois notes de harpe montantes (C5, E5, G5), récompense calme. */
+    victory(now) {
+      const notes = [523.25, 659.25, 783.99]
+      for (let i = 0; i < notes.length; i++) {
+        playBell(now + i * 0.12, { frequency: notes[i], filterHz: 3000, peak: 0.14, attack: 0.012, decay: 0.34, partials: [2.0] })
+      }
+    },
+    /** Défaite : nappe descendante résignée, sans dureté ni coupure. */
+    defeat(now) {
+      playPad(now, {
+        frequency: 220,
+        endFrequency: 174.61,
+        filterFrom: 800,
+        filterTo: 360,
+        peak: 0.15,
+        attack: 0.12,
+        decay: 0.9,
+        layers: [
+          { ratio: 1, type: 'triangle', gain: 0.7 },
+          { ratio: 0.75, type: 'sine', gain: 0.45 },
+        ],
+      })
+    },
   }
 
   function play(name) {
     if (disposed || !name) return false
-    const now = context.currentTime
-    if (name === 'plant') playPlant(now)
-    else if (name === 'wave') playWave(now)
-    else if (name === 'repelled') playRepelled(now)
-    else return false
+    const builder = builders[LEGACY_EFFECT_NAMES[name] ?? name]
+    if (!builder) return false
+    builder(context.currentTime)
     return true
   }
 
@@ -213,6 +374,7 @@ export function createVoices({ context, destination }) {
     if (disposed) return
     stop()
     disposed = true
+    noiseBuffer = null
   }
 
   return {
