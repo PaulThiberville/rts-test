@@ -187,29 +187,44 @@ export default async function ({ page, load, state }) {
     }))
     // Fenêtre glissante de 1 s du limiteur : on attend qu'elle soit vide avant la rafale.
     await waitWallClock(page, 1100)
+    // Sources concurrentes neutralisées pendant la rafale : `towers.reset()` retire les tours
+    // (donc leurs tirs) et `state.paused = true` gèle la mise à jour des entités (game.js:61),
+    // si bien qu'aucune ombre ne meurt plus et qu'aucun `shade-repelled`/`tower-shot` du jeu ne
+    // peut s'intercaler. Le bus d'événements est indépendant de la boucle : l'émission directe
+    // du test joue toujours la voix `kill`.
+    await page.evaluate(() => { window.__game.towers.reset(); window.__game.state.paused = true })
     // La rafale est horodatée côté page : sous charge CPU, `setInterval(100)` dérive et les
     // 10 appels peuvent s'étaler sur plus d'une seconde — le limiteur en accepte alors
     // légitimement davantage sur la rafale entière. On juge donc la contrainte de design
-    // (« ≤ 3 acceptés dans toute fenêtre de 1 s ») sur les instants réels d'acceptation. Un
-    // appel est accepté si `effectCount` avance et si `lastEffect` est la voix `kill` de
-    // l'ombre repoussée (main.js) : un coup au cœur ou un tir ne sont pas comptés.
+    // (« ≤ 3 acceptés dans toute fenêtre de 1 s ») sur les instants réels d'acceptation.
+    // Détection exacte de l'appel du test : `effectCount` doit avancer d'exactement 1, la voix
+    // doit être `kill`, et `lastEffect.at` (posé par `play()`) doit avoir avancé depuis la
+    // lecture d'avant l'émission — un effet concurrent ne peut plus passer pour le nôtre.
     const burst = await page.evaluate(() => new Promise((resolve) => {
       const audio = () => window.__game.state.audio
       const calls = []
       const id = setInterval(() => {
         // `state.audio` n'est pas un instantané mais une vue à getters : on lit des scalaires.
-        const count = audio().effectCount
+        const before = audio()
+        const count = before.effectCount
+        const atBefore = before.lastEffect?.at ?? 0
+        const callAt = Date.now()
         window.__game.emit('shade-repelled')
         const after = audio()
         calls.push({
           t: performance.now(),
-          accepted: after.effectCount > count && after.lastEffect?.name === 'kill',
+          accepted: after.effectCount === count + 1
+            && after.lastEffect?.name === 'kill'
+            && (after.lastEffect?.at ?? 0) > atBefore
+            && (after.lastEffect?.at ?? 0) >= callAt,
         })
         if (calls.length < 10) return
         clearInterval(id)
         resolve(calls)
       }, 100)
     }))
+    // La rafale finie, la boucle reprend : les blocs suivants rechargent de toute façon la page.
+    await page.evaluate(() => { window.__game.state.paused = false })
     const acceptedAt = burst.filter((call) => call.accepted).map((call) => call.t)
     const perSecond = Math.max(0, ...acceptedAt.map((t) => acceptedAt.filter((other) => other >= t && other - t < 1000).length))
     check(perSecond <= 3, `critère 3 : ${perSecond} effets acceptés dans une même seconde (limite 3/s)`)
