@@ -111,5 +111,14 @@ export async function measureEffect(page, event, durationMs = 2000, stepMs = 50)
   let peak = 10; let loud = 10
   for (let i = 10; i < samples.length; i++) if (samples[i].db > samples[peak].db) peak = i
   for (let i = peak; i < samples.length; i++) if (samples[i].db > floor + 0.5) loud = i
-  return { above: samples[peak].db - floor, tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt, firedAt: firedWall }
+  // Écart maximal entre deux échantillons (hors démarrage) : au-delà de deux pas, un échantillon
+  // a été perdu sous charge et `tail` n'est plus interprétable — l'appelant décide de retenter.
+  let maxGap = 0
+  for (let i = 2; i < samples.length; i++) maxGap = Math.max(maxGap, samples[i].t - samples[i - 1].t)
+  return {
+    above: samples[peak].db - floor,
+    tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt,
+    firedAt: firedWall,
+    maxGap,
+  }
 }
