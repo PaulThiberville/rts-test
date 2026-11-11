@@ -28,7 +28,7 @@ const GHOST_SPEED = 2.2
  * l'événement : le glissement de caméra de `camera-rig.js` reste intact.
  * @param {{ scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void, emit(name: string, payload?: object): void }} game
  * @param {{ level?: object, towers?: object, onChange?: (state: object) => void }} [options]
- * @returns {{ group: THREE.Group, update(dt: number): void, selectType(type: string | null): void, toggleBar(open?: boolean): void, place(slotId?: string): boolean, upgrade(towerId?: number): boolean, reset(): void, dispose(): void }}
+ * @returns {{ group: THREE.Group, update(dt: number): void, selectType(type: string | null): void, place(slotId?: string): boolean, upgrade(towerId?: number): boolean, reset(): void, dispose(): void }}
  */
 export function createTowerSystem(game, {
   level = LEVEL_1,
@@ -39,7 +39,7 @@ export function createTowerSystem(game, {
   const domElement = renderer.domElement
 
   state.resources = level.startingResources
-  state.towerBar = { open: false, selectedType: null }
+  state.towerBar = { open: true, selectedType: null }
   state.slots = level.slots.map(({ id, x, z }) => ({ id, x, z, occupied: false, towerId: null }))
   state.hoveredSlot = null
   state.ghost = { visible: false, slotId: null, type: null }
@@ -333,12 +333,6 @@ export function createTowerSystem(game, {
     commit()
   }
 
-  function toggleBar(open) {
-    state.towerBar.open = open === undefined ? !state.towerBar.open : Boolean(open)
-    dirty = true
-    commit()
-  }
-
   function place(slotId) {
     const slot = slotId === undefined
       ? (state.hoveredSlot === null ? null : slotById.get(state.hoveredSlot) ?? null)
@@ -403,7 +397,7 @@ export function createTowerSystem(game, {
     state.resources = level.startingResources
     state.selectedTower = null
     state.hoveredSlot = null
-    state.towerBar.selectedType = null
+    state.towerBar = { open: true, selectedType: null }
     state.ghost.visible = false
     state.ghost.slotId = null
     state.ghost.type = null
@@ -444,5 +438,5 @@ export function createTowerSystem(game, {
     group.clear()
   }
 
-  return { group, update, selectType, toggleBar, place, upgrade, reset, dispose }
+  return { group, update, selectType, place, upgrade, reset, dispose }
 }

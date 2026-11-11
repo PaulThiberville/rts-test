@@ -290,7 +290,7 @@ function mountLevel({ campaign, level: entry }, difficulty) {
 
   // Barre haute montée avant les autres HUD : le retour aux jardins et la sève
   // occupent le haut de l'écran, le HUD du niveau se place en dessous.
-  const highBar = createHighBar(ui, { onBack: showHome, state: game.state })
+  const highBar = createHighBar(ui, { onBack: showHome })
   const hud = createLevelHud(ui, { level: map })
 
   let towerBar
@@ -430,14 +430,17 @@ function completeLevel() {
 
 /**
  * Rectangles px CSS des blocs du HUD du niveau, recalculés à chaque appel :
- * le playtest vérifie les cibles et l'absence de chevauchement. Un bloc absent
- * (hors niveau) vaut `null`.
- * @returns {{ highBar: DOMRect|null, waveHud: DOMRect|null, core: DOMRect|null, towerBar: DOMRect|null }}
+ * le playtest vérifie les cibles et l'absence de chevauchement. Chaque entrée vaut
+ * `null` si l'élément est absent ; sinon un objet simple `{ x, y, width, height }`,
+ * sérialisable tel quel par le playtest.
+ * @returns {{ highBar: {x: number, y: number, width: number, height: number}|null, waveHud: object|null, core: object|null, towerBar: object|null }}
  */
 function measureUi() {
   const measure = (selector) => {
     const node = document.querySelector(selector)
-    return node ? node.getBoundingClientRect() : null
+    if (!node) return null
+    const rect = node.getBoundingClientRect()
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
   }
   return {
     highBar: measure('.high-bar'),
