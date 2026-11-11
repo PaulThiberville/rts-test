@@ -164,6 +164,17 @@ let home = null
 let levelSelect = null
 /** Niveau en cours et tous ses systèmes, ou null hors de `'game'`. */
 let session = null
+/** Juice de la session en cours, ou null hors niveau : les abonnements ci-dessous le lisent. */
+let juice = null
+
+// Juice des trois moments d'intégration (#149) : poser une tour, encaisser au cœur,
+// terminer la partie. Les noms dédiés s'ajoutent aux événements déjà émis par les
+// systèmes, sans les remplacer : le son et les playtests continuent de les écouter.
+game.on('tower-placed', (event) => juice?.spawn('towerPlaced', event))
+game.on('core-hit', (event) => juice?.spawn('heartDamage', event))
+game.on('run-end', (event) => {
+  if (event.outcome === 'victory') juice?.spawn('victory', event)
+})
 
 /** Progression au format attendu par `createLevelSelect`. */
 function selectProgress() {
@@ -191,6 +202,7 @@ function stopLevel() {
   towers.dispose()
   hud.destroy()
   level.dispose()
+  juice = null
   delete game.state.level
   delete game.towers
 }
@@ -251,6 +263,8 @@ function showLevels() {
 function mountLevel({ campaign, level: entry }, difficulty) {
   const map = MAPS.get(entry.map) ?? LEVEL_1
   const level = createLevel(game, { level: map })
+  // Le juice du niveau reçoit les tirs, les morts et les impacts du système de vagues.
+  juice = level.juice
   game.state.level.id = entry.id
   game.state.level.mapId = map.id
   game.state.screen = 'game'
@@ -305,6 +319,7 @@ function mountLevel({ campaign, level: entry }, difficulty) {
 
   const waves = createWaveSystem(game, {
     level: map,
+    juice: level.juice,
     onChange: updateWaves,
     onEnd: updateWaves,
   })
