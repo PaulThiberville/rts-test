@@ -10,6 +10,8 @@ const FOV_FLOOR = 1
 const FIT_MARGIN = 0.6
 /** Retrait appliqué à la cible pour que les coins restent strictement dans le sol. */
 const EDGE_INSET = 0.01
+/** Décalage maximal de la secousse, en unités monde : le plafond de l'Epic #131. */
+const SHAKE_LIMIT = 0.06
 /** Coins de l'écran en coordonnées normalisées, parcourus dans l'ordre des quatre coins. */
 const CORNER_NDC = [
   [-1, -1],
@@ -25,8 +27,11 @@ const clamp = (value, min, max) => (value < min ? min : value > max ? max : valu
  * souris/tactile via les événements pointeur, cadrage resserré pour que le sol visible
  * reste dans `bounds` élargi de `skirt`, et cible limitée à `camera.pan` autour de
  * `camera.target`. `state` est un objet simple, sérialisable, lu par les playtests.
+ *
+ * `juice` fournit la micro-secousse de #147 : son décalage est ajouté à la pose finale
+ * de chaque image, donc jamais cumulé, et borné à 0,06 unité par axe.
  */
-export function createCameraRig({ camera, domElement, level = LEVEL_1 }) {
+export function createCameraRig({ camera, domElement, level = LEVEL_1, juice = null }) {
   const { bounds, camera: view } = level
   const panMinX = view.target.x - view.pan
   const panMaxX = view.target.x + view.pan
@@ -165,6 +170,21 @@ export function createCameraRig({ camera, domElement, level = LEVEL_1 }) {
     return clamp(value, groundMin, groundMax)
   }
 
+  /**
+   * Ajoute la secousse du juice à la pose finale, axe par axe et sans cumul : la pose est
+   * recalculée à chaque image, l'enveloppe de `shake()` est donc simplement remplacée.
+   */
+  function applyShake() {
+    if (!juice || typeof juice.shake !== 'function') return
+    const offset = juice.shake()
+    if (!offset) return
+    camera.position.x += clamp(offset.x, -SHAKE_LIMIT, SHAKE_LIMIT)
+    camera.position.y += clamp(offset.y, -SHAKE_LIMIT, SHAKE_LIMIT)
+    camera.position.z += clamp(offset.z, -SHAKE_LIMIT, SHAKE_LIMIT)
+    // La projection du cœur, calculée juste après, lit la matrice à jour.
+    camera.updateMatrixWorld()
+  }
+
   /** Vrai si les quatre intersections tiennent dans le sol élargi. */
   function cornersInBounds() {
     for (let i = 0; i < 4; i++) {
@@ -201,6 +221,7 @@ export function createCameraRig({ camera, domElement, level = LEVEL_1 }) {
     }
     state.inBounds = projected && cornersInBounds()
     if (!projected) poseCamera(camera, state.targetX, state.targetZ, state.yaw, state.pitch, state.distance)
+    applyShake()
   }
 
   function reset() {

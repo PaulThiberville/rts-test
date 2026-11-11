@@ -2,11 +2,14 @@ import * as THREE from 'three'
 import { LEVEL_1 } from '../data/level-1.js'
 import { createClairiere } from '../entities/clairiere.js'
 import { createAmbience } from '../vfx/ambience.js'
+import { createJuiceFx } from '../vfx/juice.js'
 import { createCameraRig } from './camera-rig.js'
 import { createLighting } from './lighting.js'
 
 /** Altitude du disque du cœur, identique à celle posée par la clairière. */
 const HEART_Y = 0.03
+/** Fenêtre de `state.fx.lastImpact` : la marque du juice s'efface en 0,5 s. */
+const FX_IMPACT_WINDOW = 0.5
 /** Points du disque projetés à l'écran pour en déduire la boîte englobante. */
 const HEART_SAMPLES = 32
 
@@ -115,18 +118,21 @@ function disposeObject(root) {
 }
 
 /**
- * Niveau 1 assemblé : clairière, caméra orbitale et état observable.
+ * Niveau 1 assemblé : clairière, caméra orbitale, juice des événements et état observable.
  * Le groupe porte `update(dt)` (appelé par la boucle du jeu) qui avance la caméra
- * et recalcule la projection du cœur ; `state` reste une copie sérialisable.
+ * et recalcule la projection du cœur ; le juice avance dans sa propre entité.
+ * `state.fx` recopie ses compteurs et `state` reste une copie sérialisable.
  * @param {{ scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void }} game
  * @param {{ level?: object }} [options]
- * @returns {{ group: THREE.Group, rig: ReturnType<typeof createCameraRig>, dispose(): void }}
+ * @returns {{ group: THREE.Group, rig: ReturnType<typeof createCameraRig>, juice: ReturnType<typeof createJuiceFx>, dispose(): void }}
  */
 export function createLevel(game, { level = LEVEL_1 } = {}) {
   const { camera, renderer, state } = game
   const domElement = renderer.domElement
 
-  const rig = createCameraRig({ camera, domElement, level })
+  // Le juice est monté avant le rig : la caméra ajoute sa secousse dès la première image.
+  const juice = createJuiceFx({ scene: game.scene })
+  const rig = createCameraRig({ camera, domElement, level, juice })
   const group = createClairiere({ level })
   game.add(group)
 
@@ -178,6 +184,53 @@ export function createLevel(game, { level = LEVEL_1 } = {}) {
     decor: { families: level.decor?.families },
   }))
   state.camera = rig.state
+
+  // Compteurs de juice recopiés dans l'état : chaque événement est compté séparément,
+  // et le dernier impact reste exposé le temps que sa marque s'efface (0,5 s).
+  const fx = {
+    towerPlaced: 0,
+    shot: 0,
+    kill: 0,
+    heartDamage: 0,
+    victory: 0,
+    lastImpact: null,
+  }
+  state.fx = fx
+
+  /** Recopie `juice.counters` sans recréer l'objet d'état à chaque image. */
+  function syncFx() {
+    const counters = juice.counters
+    fx.towerPlaced = counters.towerPlaced
+    fx.shot = counters.shot
+    fx.kill = counters.kill
+    fx.heartDamage = counters.heartDamage
+    fx.victory = counters.victory
+    const last = counters.lastImpact
+    if (!last || last.age > FX_IMPACT_WINDOW) {
+      fx.lastImpact = null
+      return
+    }
+    if (fx.lastImpact === null) fx.lastImpact = { event: '', x: 0, z: 0, age: 0 }
+    fx.lastImpact.event = last.event
+    fx.lastImpact.x = last.x
+    fx.lastImpact.z = last.z
+    fx.lastImpact.age = last.age
+  }
+
+  // Chaque déclenchement recopie les compteurs dans la même image : `state.fx` réagit
+  // sans attendre la frame suivante, et `lastImpact.age` avance ensuite dans la boucle.
+  const spawnJuice = juice.spawn
+  juice.spawn = (event, position) => {
+    spawnJuice(event, position)
+    syncFx()
+  }
+
+  // Le juice suit la convention d'entité : un `update(dt)` appelé par la boucle unique.
+  juice.group.update = (dt) => {
+    juice.update(dt)
+    syncFx()
+  }
+  game.add(juice.group)
 
   const heartScreen = { x: 0, y: 0, w: 0, h: 0 }
   state.view = { width: 0, height: 0, heartScreen, heartScreenShare: 0 }
@@ -239,15 +292,18 @@ export function createLevel(game, { level = LEVEL_1 } = {}) {
   function dispose() {
     removeEventListener('resize', onResize)
     delete group.update
+    delete juice.group.update
     game.remove(group)
     game.remove(ambience)
+    game.remove(juice.group)
     lighting.dispose()
     rig.dispose()
+    juice.dispose()
     disposeObject(group)
     disposeObject(ambience)
     group.clear()
     ambience.clear()
   }
 
-  return { group, rig, dispose }
+  return { group, rig, juice, dispose }
 }

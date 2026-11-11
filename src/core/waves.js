@@ -1,29 +1,36 @@
 import * as THREE from 'three'
 import { LEVEL_1 } from '../data/level-1.js'
+import { createProjectile, disposeProjectile } from '../entities/projectile.js'
 import { createShadow } from '../entities/shadow.js'
+
+/** Variantes de silhouette attribuées tour à tour à chaque apparition de la vague. */
+const VARIANTS = ['ronde', 'haute', 'oreillue']
 
 /**
  * Système des vagues : compte à rebours, apparitions depuis l'arrivée, trajet le
  * long de la polyligne, tir automatique des tours et état du cœur.
  *
- * Le groupe porte `update(dt)` (appelé par la boucle du jeu) et toutes les ombres.
- * `game.state` reçoit un état strictement sérialisable, lu par le HUD et les
- * playtests : aucune référence THREE n'y entre (`JSON.stringify(state)` est valide).
+ * Le groupe porte `update(dt)` (appelé par la boucle du jeu), les ombres et les
+ * projectiles en vol. `game.state` reçoit un état strictement sérialisable, lu par
+ * le HUD et les playtests : aucune référence THREE n'y entre (`JSON.stringify(state)`
+ * est valide).
  *
  * Aucune valeur de gameplay n'est écrite ici : elles viennent toutes de `level`.
  * Le tableau `state.creatures` est muté en place, comme le tableau interne, pour
- * ne rien allouer à chaque image (seules les apparitions et les morts allouent).
+ * ne rien allouer à chaque image (seules les apparitions, les tirs et les morts allouent).
  *
  * @param {{ scene: THREE.Scene, state: object, add(entity: THREE.Object3D): THREE.Object3D, remove(entity: THREE.Object3D): void, emit(name: string, payload?: object): void, towers?: { reset(): void } }} game
- * @param {{ level?: object, onChange?: (state: object) => void, onEnd?: (state: object) => void }} [options]
+ * @param {{ level?: object, juice?: { spawn(event: string, position?: object): void }, onChange?: (state: object) => void, onEnd?: (state: object) => void }} [options]
  * @returns {{ group: THREE.Group, update(dt: number): void, restart(): void, dispose(): void }}
  */
 export function createWaveSystem(game, {
   level = LEVEL_1,
+  juice = null,
   onChange = () => {},
   onEnd = () => {},
 } = {}) {
   const { state } = game
+  const fx = juice && typeof juice.spawn === 'function' ? juice : null
 
   // --- État observable initial ------------------------------------------------
 
@@ -35,6 +42,8 @@ export function createWaveSystem(game, {
   }
   state.core = { hp: level.heart.hp, max: level.heart.hp, damage: level.heart.damage }
   state.creatures = []
+  state.enemies = { silhouettes: 0 }
+  state.projectiles = { active: 0 }
   state.run = { elapsed: 0, outcome: null }
   state.lastEvent = null
 
@@ -76,18 +85,31 @@ export function createWaveSystem(game, {
   const creatures = []
   /** Ombres en cours de fondu : objets `shadow` à animer puis libérer. */
   const dying = []
+  /** Projectiles en vol : `{ mesh, fromX, fromY, fromZ, record, lethal, age, duration }`. */
+  const projectiles = []
   /** Cooldowns de tir par identifiant de tour, indépendants les uns des autres. */
   const cooldowns = new Map()
+  /** Variantes déjà apparues dans la vague courante : jamais retirées avant la suivante. */
+  const waveVariants = new Set()
 
   let nextCreatureId = 1
   let countdown = level.windup
   let spawnTimer = 0
   let spawned = 0
+  /** Rang de la prochaine variante : parcourt `VARIANTS` à chaque apparition. */
+  let variantIndex = 0
   let ended = false
   let disposed = false
 
   const rangeSquared = level.combat.range * level.combat.range
   const cadence = level.combat.cadence
+
+  // Vol d'une baie, tout tiré de la donnée du niveau : plafond cadence × rayon d'ombre
+  // (0,35 s au niveau 1, sous les 0,4 s de l'Epic), durée proportionnelle à la distance
+  // sur la portée, hauteur d'impact et bombé à l'échelle d'une ombre.
+  const flightTime = cadence * level.shadows.radius
+  const impactY = level.shadows.radius
+  const arc = level.shadows.radius
 
   // --- Notifications ----------------------------------------------------------
 
@@ -104,6 +126,14 @@ export function createWaveSystem(game, {
     if (outcome === 'victory') state.wave.phase = 'cleared'
     state.lastEvent = 'end'
     game.emit(outcome === 'victory' ? 'victory' : 'defeat', { elapsed: state.run.elapsed })
+    // Nom d'intégration #149 : le juice regarde la fin de partie, sans retirer les deux
+    // événements ci-dessus dont le son et les playtests dépendent.
+    game.emit('run-end', {
+      outcome,
+      elapsed: state.run.elapsed,
+      x: level.heart.x,
+      z: level.heart.z,
+    })
     changed()
     onEnd(state)
   }
@@ -116,6 +146,9 @@ export function createWaveSystem(game, {
     state.wave.phase = 'spawning'
     spawned = 0
     spawnTimer = 0
+    variantIndex = 0
+    waveVariants.clear()
+    state.enemies.silhouettes = 0
     state.lastEvent = 'wave'
     game.emit('wave-start', { index })
   }
@@ -144,7 +177,14 @@ export function createWaveSystem(game, {
 
   /** Fait apparaître une ombre à l'arrivée, orientée vers le premier segment. */
   function spawnCreature(wave) {
-    const shadow = createShadow({ radius: level.shadows.radius })
+    // Les trois silhouettes tournent d'une apparition à l'autre : dès la troisième,
+    // les trois profils cohabitent, et le compte ne redescend plus avant la vague suivante.
+    const variant = VARIANTS[variantIndex % VARIANTS.length]
+    variantIndex++
+    waveVariants.add(variant)
+    state.enemies.silhouettes = waveVariants.size
+
+    const shadow = createShadow({ radius: level.shadows.radius, variant })
     const object = shadow.group
     object.position.set(level.arrival.x, 0, level.arrival.z)
     if (segmentCount > 0) {
@@ -160,6 +200,7 @@ export function createWaveSystem(game, {
       z: level.arrival.z,
       progress: 0,
       alive: true,
+      variant,
     }
     creatures.push({
       record,
@@ -262,6 +303,67 @@ export function createWaveSystem(game, {
     return best
   }
 
+  /**
+   * Fait naître la baie au sommet de la tour, teintée comme elle, et mémoire la durée de
+   * vol proportionnelle à la distance, plafonnée sous les 0,4 s de l'Epic.
+   * @param {{ id: number, type: string, x: number, z: number, topY?: number, tint?: string }} tower
+   * @param {{ record: object }} target ombre visée, suivie pendant le vol
+   * @param {boolean} lethal vrai si ce tir emporte l'ombre
+   */
+  function spawnProjectile(tower, target, lethal) {
+    const mesh = createProjectile({ tint: tower.tint })
+    const fromY = Number.isFinite(tower.topY) ? tower.topY : impactY
+    mesh.position.set(tower.x, fromY, tower.z)
+    group.add(mesh)
+
+    const dx = target.record.x - tower.x
+    const dz = target.record.z - tower.z
+    // Distance bornée par la portée : le vol ne dépasse jamais `flightTime`.
+    const distance = Math.min(Math.hypot(dx, dz), level.combat.range)
+    projectiles.push({
+      mesh,
+      fromX: tower.x,
+      fromY,
+      fromZ: tower.z,
+      record: target.record,
+      lethal,
+      age: 0,
+      duration: (flightTime * distance) / level.combat.range,
+    })
+    // Le compteur suit l'envol dans la même image : `active > 0` dès qu'une baie existe.
+    state.projectiles.active = projectiles.length
+  }
+
+  /**
+   * Avance chaque baie vers sa cible vivante : vol en cloche, impact à la fin du temps
+   * de vol, puis juice et libération immédiate du projectile.
+   */
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const shot = projectiles[i]
+      shot.age += dt
+      const t = Math.min(1, shot.age / shot.duration)
+      const record = shot.record
+      const x = shot.fromX + (record.x - shot.fromX) * t
+      const z = shot.fromZ + (record.z - shot.fromZ) * t
+      const y = shot.fromY
+        + (impactY - shot.fromY) * t
+        + Math.sin(Math.PI * t) * arc
+      shot.mesh.position.set(x, y, z)
+      if (t < 1) continue
+
+      group.remove(shot.mesh)
+      disposeProjectile(shot.mesh)
+      projectiles.splice(i, 1)
+      if (fx) {
+        const impact = { x, y: impactY, z }
+        fx.spawn('shot', impact)
+        if (shot.lethal) fx.spawn('kill', impact)
+      }
+    }
+    state.projectiles.active = projectiles.length
+  }
+
   /** Chaque tour vivante tire à sa cadence sur l'ombre de tête à sa portée. */
   function updateCombat(dt) {
     const towers = state.towers
@@ -285,14 +387,16 @@ export function createWaveSystem(game, {
       }
 
       target.record.hp = Math.max(0, target.record.hp - damage)
+      const lethal = target.record.hp <= 0
       tower.shots = (tower.shots ?? 0) + 1
       // Une salve par tour et par cadence : un seul événement, quel que soit le nombre
       // de projectiles ou de cibles du système de rendu.
       game.emit('tower-shot', { towerId: tower.id })
       target.shadow.playHit()
+      spawnProjectile(tower, target, lethal)
       state.lastEvent = 'hit'
       cooldowns.set(tower.id, cadence)
-      if (target.record.hp <= 0) kill(target)
+      if (lethal) kill(target)
       changed()
     }
   }
@@ -323,6 +427,13 @@ export function createWaveSystem(game, {
     state.core.hp = Math.max(0, state.core.hp - level.heart.damage)
     state.lastEvent = 'breach'
     game.emit('heart-hit', { hp: state.core.hp, damage: level.heart.damage })
+    // Nom d'intégration #149 : le juice encaisse au cœur, en plus du son de `heart-hit`.
+    game.emit('core-hit', {
+      hp: state.core.hp,
+      damage: level.heart.damage,
+      x: level.heart.x,
+      z: level.heart.z,
+    })
     changed()
     if (state.core.hp <= 0) finish('defeat')
   }
@@ -358,8 +469,9 @@ export function createWaveSystem(game, {
 
   function update(dt) {
     if (disposed) return
-    // Les fondus continuent même après la fin : seule la logique de jeu est figée.
+    // Fondus et vols continuent même après la fin : seule la logique de jeu est figée.
     updateDying(dt)
+    updateProjectiles(dt)
     if (ended) return
 
     state.run.elapsed += dt
@@ -393,16 +505,30 @@ export function createWaveSystem(game, {
     dying.length = 0
   }
 
+  /** Libère les projectiles encore en vol : ils ne survivent ni au rejeu ni au démontage. */
+  function clearProjectiles() {
+    for (let i = 0; i < projectiles.length; i++) {
+      group.remove(projectiles[i].mesh)
+      disposeProjectile(projectiles[i].mesh)
+    }
+    projectiles.length = 0
+    state.projectiles.active = 0
+  }
+
   /** Réinitialise une partie sans rechargement : décor intact, tours rendues. */
   function restart() {
     if (disposed) return
     clearShadows()
+    clearProjectiles()
     state.creatures = []
     cooldowns.clear()
     nextCreatureId = 1
     countdown = level.windup
     spawnTimer = 0
     spawned = 0
+    variantIndex = 0
+    waveVariants.clear()
+    state.enemies.silhouettes = 0
     ended = false
 
     state.core.hp = state.core.max
@@ -422,6 +548,7 @@ export function createWaveSystem(game, {
     if (disposed) return
     disposed = true
     clearShadows()
+    clearProjectiles()
     state.creatures.length = 0
     cooldowns.clear()
     delete group.update

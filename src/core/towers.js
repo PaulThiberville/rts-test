@@ -185,11 +185,30 @@ export function createTowerSystem(game, {
     dirty = true
   }
 
-  /** Ajoute l'objet 3D d'un enregistrement de tour au groupe et aux index de saisie. */
+  /**
+   * Teinte du matériau de la tour, en hex sRGB : c'est celle que portera son projectile.
+   * @param {THREE.Object3D} object
+   * @returns {string | null}
+   */
+  function readTint(object) {
+    let tint = null
+    object.traverse((node) => {
+      if (tint !== null || !node.material?.color) return
+      tint = `#${node.material.color.getHexString()}`
+    })
+    return tint
+  }
+
+  /**
+   * Ajoute l'objet 3D d'un enregistrement de tour au groupe et aux index de saisie.
+   * Le sommet et la teinte relevés sur le maillage servent au projectile de #149.
+   */
   function addTowerObject(record) {
     const object = createTower({ type: record.type, level: record.level })
     object.position.set(record.x, 0, record.z)
     object.userData = { ...object.userData, id: record.id }
+    record.topY = new THREE.Box3().setFromObject(object).max.y
+    record.tint = readTint(object)
     group.add(object)
     towerObjects.push(object)
     towerByObject.set(object, record)
@@ -233,6 +252,14 @@ export function createTowerSystem(game, {
     state.lastAction = 'placed'
     state.lastRefusal = null
     dirty = true
+    // Nom d'intégration #149 : le juice fête la pose ; `plant` reste joué par `main.js`.
+    game.emit('tower-placed', {
+      id: record.id,
+      type: record.type,
+      level: record.level,
+      x: record.x,
+      z: record.z,
+    })
     refreshGhost()
     return true
   }
