@@ -1,12 +1,12 @@
 ---
 tags: [gdd]
 status: draft
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Mécaniques
 
-Boucle de jeu et contrôles : le livré d'aujourd'hui, puis les contrats de #60/#58 et de #148 signalés comme tels. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
+Boucle de jeu et contrôles : le livré d'aujourd'hui. Découle de [[Vision]] ; le cadrage et le ton visuel viennent de [[Direction-Artistique]].
 
 ## Chargement
 
@@ -26,7 +26,7 @@ L'URL accepte `?niveau=<levelId>` pour démarrer directement sur un niveau, accu
 
 ## Boucle principale
 
-Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, choisit une graine dans la barre des tours-plantes toujours ouverte et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore. Les vagues montent ensuite d'elles-mêmes : 8 s de répit, 6 vagues d'ombres apparues une à une depuis l'entrée sud et qui suivent le chemin, tir automatique des tours-plantes sans aucun clic, cœur à 12 PV. La partie s'achève sur une victoire calme ou une défaite sans punition, avec la vague atteinte et la durée ; « Rejouer » relance aussitôt, sans confirmation. Valeurs détaillées dans « Les petites ombres ».
+Dans un niveau lancé, le joueur fait le tour de la clairière à la caméra, choisit une graine dans la barre des tours-plantes toujours ouverte et la pose sur un emplacement, puis sélectionne une tour posée et l'améliore. Les vagues montent ensuite d'elles-mêmes : 8 s de répit, 6 vagues d'ombres apparues une à une depuis l'entrée sud et qui suivent le chemin, tir automatique des tours-plantes sans aucun clic, cœur à 12 PV. La partie s'achève sur une victoire calme ou une défaite sans punition, avec la vague atteinte et la durée : trois actions en victoire, deux en défaite (« Cœur et fin de partie »). Valeurs détaillées dans « Les petites ombres ».
 
 ## Tours-plantes
 
@@ -34,7 +34,7 @@ La barre est toujours ouverte, en bas à gauche de l'écran : aucun bouton ne l'
 
 Le panneau est un aplat translucide unique, arrondi, posé sur le décor : aucun fond blanc entre ses boutons, aucun interstice clair, ni sur la rangée de graines ni sur la sélection. Les boutons affichés se lisent côte à côte, séparés par leur propre contour et non par une bande de fond clair.
 
-Contrat de #148 (barre haute dédiée, barre des tours permanente) : cette barre toujours ouverte, la barre haute et la sève affichée n'arrivent qu'avec #148 ; en attendant son merge, le module de la barre garde son bouton de repli et la sève ne s'affiche pas à l'écran.
+Livrées avec #148 : la barre des tours n'a pas de bouton de repli, et la barre haute affiche « Retour » et la sève en permanence.
 
 | Graine | Pose | Amélioration 1 → 2 |
 |---|---|---|
@@ -52,7 +52,7 @@ Contrat de #148 (barre haute dédiée, barre des tours permanente) : cette barre
 
 ## Les petites ombres
 
-Contrat des tickets #60 (vagues, tir automatique, cœur) et #58 (écran de fin) : `src/core/waves.js` n'existe pas encore dans cette branche, rien de ce qui suit n'y est livré tant que #60 n'est pas mergé. Seules les valeurs existent, dans `src/data/level-1.js`. La silhouette ronde des ombres vient de [[Direction-Artistique]], le ton « victoire calme, défaite sans punition » de [[Vision]].
+Valeurs de `src/data/level-1.js` importées par `src/core/waves.js`, qui n'en porte aucune en dur. La silhouette ronde des ombres vient de [[Direction-Artistique]], le ton « victoire calme, défaite sans punition » de [[Vision]].
 
 ### Vagues
 
@@ -85,11 +85,23 @@ Huit secondes de répit (`windup`) avant la vague 1, puis les six entrées de `w
 
 - Le cœur a 12 PV (`heart.hp`, vie maximale) et `heart.damage` = 1 : chaque ombre qui l'atteint coûte exactement 1 PV et disparaît.
 - Victoire quand la dernière ombre de la vague 6 est abattue ; défaite quand la vie du cœur tombe à 0. Une seule fin par partie.
-- L'écran de fin affiche la vague atteinte et la durée de la partie ; « Rejouer » remet le niveau à son état de départ — cœur plein, 120 sève, emplacements libres, vague 1 — sans confirmation ni pénalité.
+- L'écran de fin est une modale plein cadre (`src/ui/wave-hud.js`) : titre « Victoire » ou « Défaite », vague atteinte, durée `mm:ss` ; le reste du HUD devient inerte tant qu'elle est ouverte.
+Actions de l'écran de fin — trois en victoire, deux en défaite — dans cet ordre :
+
+| Fin | « Niveau suivant » | « Rejouer » | « Retour aux jardins » |
+|---|---|---|---|
+| Victoire | affiché, action principale (focus à l'ouverture) | affiché | affiché |
+| Défaite | masqué **et** désactivé : hors boucle de tabulation et d'arbre d'accessibilité | affiché | affiché |
+
+- Progression écrite **avant** toute relance ou réinitialisation : la victoire est enregistrée au moment où la partie se termine, avant l'affichage de la modale, sans attendre un clic. `markCompleted` est idempotent et ajoute l'id à `seveclaire.progress.v1` (`localStorage`), au format décrit en « Accueil et difficultés ».
+- « Rejouer » ne peut donc rien effacer : `waves.restart()` remet cœur plein (12 PV), 120 sève, emplacements libres, vague 1 et durée à zéro, sans toucher à la progression. Une défaite n'écrit rien.
+- La progression survit à `location.reload()` : au démarrage, `readProgress` relit `localStorage`, le jardin terminé reste terminé et le suivant reste déverrouillé.
+- « Niveau suivant » monte directement le jardin suivant de la campagne, URL mise à jour en place (`?niveau=niveau-2&difficulty=<easy|medium|hard>`), sans accueil ni liste et sans rechargement ; au dernier jardin, retour à la liste.
+- « Retour aux jardins » ferme le niveau et rouvre la liste des jardins de la campagne, le suivant déverrouillé, sans rechargement de page.
 
 ### Réglage
 
-Toutes ces valeurs se règlent dans `src/data/level-1.js` (`windup`, `waves`, `heart`, `combat`, `arrival`) ; le `src/core/waves.js` du contrat #60 les importera et n'en portera aucune en dur.
+Toutes ces valeurs se règlent dans `src/data/level-1.js` (`windup`, `waves`, `heart`, `combat`, `arrival`) ; `src/core/waves.js` les importe et n'en porte aucune en dur.
 
 ## Contrôles
 
@@ -104,7 +116,7 @@ Toutes ces valeurs se règlent dans `src/data/level-1.js` (`windup`, `waves`, `h
 
 - Aucun geste n'ouvre ni ne ferme l'interface : la barre des tours reste déployée en bas à gauche et la barre haute ne se replie pas (barre permanente livrée avec #148).
 - Le tir est automatique : aucune commande de tir, ni souris ni tactile.
-- « Rejouer » et l'écran de fin arrivent avec #58/#60 ; les autres lignes du tableau sont livrées.
+- Toutes les lignes du tableau sont livrées ; les trois actions de fin sont détaillées dans « Cœur et fin de partie ».
 - La caméra ne change pas : choisir, poser, sélectionner et améliorer sont des appuis sur place. Un déplacement de plus de 6 px entre l'appui et le relâchement reste un glissement de caméra, jamais une pose.
 - Aucun clavier livré : ni ZQSD, ni flèches, ni raccourcis. Le clavier annoncé dans le cadre de [[Vision]] reste un objectif, pas un contrôle disponible aujourd'hui.
 - Aucun zoom imposé : molette et pincement ne changent pas la distance de caméra.
