@@ -31,7 +31,8 @@ export function createGame(container) {
 
   const timer = new THREE.Timer()
   const entities = new Set()
-  const state = { frames: 0, paused: false, render: { drawCalls: 0, triangles: 0 } }
+  // `speed` est le seul facteur de temps du gameplay : 1 par défaut, jamais intermédiaire.
+  const state = { frames: 0, paused: false, speed: 1, render: { drawCalls: 0, triangles: 0 } }
   let render = () => renderer.render(scene, camera)
 
   /** Abonnés du bus de jeu, rangés par nom d'événement. */
@@ -57,13 +58,25 @@ export function createGame(container) {
 
   function tick(time) {
     timer.update(time)
-    const dt = Math.min(timer.getDelta(), 0.1) // évite les sauts après un onglet en arrière-plan
+    // Horloge réelle, bornée pour éviter les sauts après un onglet en arrière-plan.
+    const realDt = Math.min(timer.getDelta(), 0.1)
+    // Temps de gameplay : le multiplicateur s'applique d'un bloc à toutes les entités,
+    // donc cadence de tir, compte à rebours et marche des ombres suivent le même facteur.
+    const dt = realDt * state.speed
     if (!state.paused) for (const e of entities) e.update?.(dt)
-    render(dt)
+    render(realDt)
     // Budget de rendu de la dernière image : lu par le playtest en 390×844.
     state.render.drawCalls = renderer.info.render.calls
     state.render.triangles = renderer.info.render.triangles
     state.frames++
+    // Battement de rendu en temps réel : le HUD s'y recale sans tenir sa propre horloge.
+    emit('frame', realDt)
+  }
+
+  /** Facteur de vitesse du gameplay : seules les valeurs entières 1, 2 et 3 sont acceptées. */
+  function setSpeed(value) {
+    if (value !== 1 && value !== 2 && value !== 3) return
+    state.speed = value
   }
 
   return {
@@ -73,6 +86,7 @@ export function createGame(container) {
     state,
     on,
     emit,
+    setSpeed,
     add(entity) {
       entities.add(entity)
       scene.add(entity)

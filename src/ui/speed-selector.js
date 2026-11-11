@@ -38,7 +38,7 @@ export function createSpeedSelector(root, { onSelect, speed = 1 } = {}) {
     button.className = 'speed-selector__button'
     button.dataset.speed = String(value)
     // Clés littérales : `scripts/i18n-check.mjs` relie chaque clé à son usage.
-    button.textContent = `×${value}`
+    button.textContent = t('hud.speed.value', { value })
     button.setAttribute('aria-label', t('hud.speed.aria', { value }))
     // Infobulle utile au survol : la pastille, transparente aux pointeurs, n'en porte pas.
     button.title = t('hud.speed.title')

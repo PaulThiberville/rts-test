@@ -16,6 +16,7 @@
   "hud.sap": "{n} sève",
   "hud.sap.label": "Sève",
   "hud.speed.label": "Vitesse",
+  "hud.speed.value": "×{value}",
   "hud.speed.aria": "Vitesse ×{value}",
   "hud.speed.title": "Rythme du jardin",
   "audio.label": "Son",
