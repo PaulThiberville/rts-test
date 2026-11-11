@@ -16,6 +16,7 @@
   "hud.sap": "{n} sap",
   "hud.sap.label": "Sap",
   "hud.speed.label": "Speed",
+  "hud.speed.value": "×{value}",
   "hud.speed.aria": "Speed ×{value}",
   "hud.speed.title": "Garden pace",
   "audio.label": "Sound",

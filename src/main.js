@@ -19,6 +19,7 @@ import { createHighBar } from './ui/high-bar.js'
 import { createHomeScreen } from './ui/home.js'
 import { createLevelHud } from './ui/level-hud.js'
 import { createLevelSelect } from './ui/level-select.js'
+import { createSpeedSelector } from './ui/speed-selector.js'
 import { createTowerBar } from './ui/tower-bar.js'
 import { createWaveHud } from './ui/wave-hud.js'
 
@@ -158,6 +159,12 @@ const audioToggle = createAudioToggle(ui, {
 })
 audioToggle.update(audio.getSnapshot())
 
+// Sélecteur de vitesse : il ne décide de rien et remonte le choix, la boucle applique le
+// facteur. Son affichage suit `state.speed` à chaque image, donc un nouveau niveau ou un
+// « Rejouer » le ramène à ×1. Il vit avec le HUD du niveau, jamais dans les menus.
+let speedSelector = null
+game.on('frame', () => speedSelector?.update({ speed: game.state.speed }))
+
 /** Écran d'accueil monté, ou null hors de `'home'`. */
 let home = null
 /** Écran de choix du jardin monté, ou null hors de `'levels'`. */
@@ -195,6 +202,8 @@ function stopLevel() {
   if (!session) return
   const { level, hud, highBar, towerBar, towers, waveHud, waves } = session
   session = null
+  speedSelector?.destroy()
+  speedSelector = null
   waveHud.destroy()
   waves.dispose()
   highBar.destroy()
@@ -203,6 +212,9 @@ function stopLevel() {
   hud.destroy()
   level.dispose()
   juice = null
+  // Quitter le niveau ne laisse pas de facteur de vitesse derrière soi : le prochain
+  // jardin démarre à ×1, et les menus retrouvent le sélecteur neutre.
+  game.setSpeed(1)
   delete game.state.level
   delete game.towers
 }
@@ -261,6 +273,10 @@ function showLevels() {
  * @param {object} difficulty profil de `DIFFICULTIES`
  */
 function mountLevel({ campaign, level: entry }, difficulty) {
+  // Chaque jardin s'ouvre à vitesse réelle, quel que soit le facteur du précédent.
+  game.setSpeed(1)
+  speedSelector = createSpeedSelector(ui, { onSelect: (speed) => game.setSpeed(speed) })
+  speedSelector.update({ speed: game.state.speed })
   const map = MAPS.get(entry.map) ?? LEVEL_1
   const level = createLevel(game, { level: map })
   // Le juice du niveau reçoit les tirs, les morts et les impacts du système de vagues.
@@ -301,7 +317,11 @@ function mountLevel({ campaign, level: entry }, difficulty) {
   game.towers = towers
 
   const waveHud = createWaveHud(ui, {
-    onRestart: () => waves.restart(),
+    onRestart: () => {
+      // « Rejouer » repart à vitesse réelle : aucune cadence accélérée n'est conservée.
+      game.setSpeed(1)
+      waves.restart()
+    },
     onNext: () => goNextLevel(),
     onExit: () => showLevels(),
   })
