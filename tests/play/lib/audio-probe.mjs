@@ -113,3 +113,101 @@ export async function measureEffect(page, event, durationMs = 2000, stepMs = 50)
   for (let i = peak; i < samples.length; i++) if (samples[i].db > floor + 0.5) loud = i
   return { above: samples[peak].db - floor, tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt, firedAt: firedWall }
 }
+
+// Sonde des voix de l'Epic #130 : `state.sound.played` dit ce que le jeu croit avoir
+// joué, cette sonde dit ce que le Web Audio a réellement programmé. Elle ne touche ni
+// au graphe ni aux gains (contrairement à `installProbe`, qui y branche des analyseurs) :
+// elle enveloppe la création des sources et la programmation des AudioParam, puis rend
+// un relevé sérialisable. `reset()` borne une mesure à un moment, `dump()` la restitue.
+// Aucune grandeur du jeu n'est modifiée : lecture seule, avant tout chargement.
+export function installVoiceProbe() {
+  const ctxProto = (window.BaseAudioContext ?? window.AudioContext)?.prototype
+  if (!ctxProto || window.__voiceProbe) return
+  /** Source → relevé ; les méthodes de programmation retrouvent leur nœud par ce biais. */
+  const entries = new WeakMap()
+  /** AudioParam → relevé de la source ou du gain qui le possède. */
+  const params = new Map()
+  const sources = []
+  const gains = []
+  const probe = {
+    reset() {
+      sources.length = 0
+      gains.length = 0
+      params.clear()
+    },
+    dump() {
+      return {
+        sources: sources.map((entry) => ({
+          kind: entry.kind,
+          type: entry.kind === 'osc' ? entry.node.type : 'noise',
+          startAt: entry.startAt,
+          freq: entry.freq.map((point) => ({ value: point.value, time: point.time })),
+        })),
+        gains: gains.map((entry) => ({
+          events: entry.events.map((event) => ({ method: event.method, value: event.value, time: event.time })),
+        })),
+      }
+    },
+  }
+  window.__voiceProbe = probe
+
+  const wrap = (name, describe) => {
+    const original = ctxProto[name]
+    if (typeof original !== 'function') return
+    ctxProto[name] = function (...args) {
+      const node = original.apply(this, args)
+      describe(node)
+      return node
+    }
+  }
+  wrap('createOscillator', (node) => {
+    const entry = { kind: 'osc', node, startAt: null, freq: [] }
+    sources.push(entry)
+    entries.set(node, entry)
+    params.set(node.frequency, entry)
+  })
+  wrap('createBufferSource', (node) => {
+    const entry = { kind: 'noise', node, startAt: null, freq: [] }
+    sources.push(entry)
+    entries.set(node, entry)
+  })
+  wrap('createGain', (node) => {
+    const entry = { kind: 'gain', node, events: [] }
+    gains.push(entry)
+    params.set(node.gain, entry)
+  })
+
+  // `start()` : l'instant demandé fait foi (« quand la voix sonne »), pas `currentTime`.
+  // Chromium expose `start` sur AudioScheduledSourceNode, mais chaque nœud peut en porter
+  // sa propre copie : on couvre les prototypes feuilles sans wrapper deux fois (marqueur).
+  const patchStart = (proto) => {
+    const start = proto?.start
+    if (typeof start !== 'function' || start.__voiceStart) return
+    const wrapper = function (when) {
+      const entry = entries.get(this)
+      if (entry) entry.startAt = typeof when === 'number' ? when : this.context.currentTime
+      return start.call(this, when)
+    }
+    wrapper.__voiceStart = true
+    proto.start = wrapper
+  }
+  for (const name of ['AudioScheduledSourceNode', 'OscillatorNode', 'AudioBufferSourceNode', 'ConstantSourceNode']) {
+    patchStart(window[name]?.prototype)
+  }
+
+  // Enveloppes : la rampe exponentielle vers le pic, puis vers 0,0001, donne attaque et décroissance.
+  const paramProto = window.AudioParam?.prototype
+  for (const method of ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime']) {
+    const original = paramProto?.[method]
+    if (typeof original !== 'function') continue
+    paramProto[method] = function (value, time) {
+      const entry = params.get(this)
+      if (entry) {
+        const point = { method, value, time }
+        if (entry.freq) entry.freq.push(point)
+        else if (entry.events) entry.events.push(point)
+      }
+      return original.call(this, value, time)
+    }
+  }
+}
