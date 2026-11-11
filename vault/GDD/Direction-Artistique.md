@@ -1,7 +1,7 @@
 ---
 tags: [gdd]
 status: validated
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Direction artistique
@@ -14,11 +14,11 @@ Référence unique pour textureur, illustrateur, VFX et UI. Découle de [[Vision
 |---|---|---|
 | Fond | `#faf3e3` | Ciel et sol de la clairière, aube douce |
 | Primaire (joueur) | `#6ec6b5` | Plantes-défenses et éléments du gardien |
-| Danger | `#e8907f` | Ombres hostiles et alertes |
+| Danger | `#e8907f` | Alertes et flash d'impact : marque au sol, gerbes de dégâts |
 | Récompense | `#f2c66d` | Butin, étoiles et gains de niveau |
 | Texte | `#3e4a43` | Texte d’interface sur fond clair |
 
-Teintes pastel, désaturées, jamais fluo : chaque rôle reste reconnaissable d’un coup d’œil, même sur petit écran. Une seule teinte par type de plante-défense (pilier « Mignon et lisible » de [[Vision]]).
+Teintes pastel, désaturées, jamais fluo : chaque rôle reste reconnaissable d’un coup d’œil, même sur petit écran. Une seule teinte par type de plante-défense, éclaircie d’un cran au niveau 2 dans la même famille (pilier « Mignon et lisible » de [[Vision]]).
 
 ### Contraste texte / fond
 
@@ -29,7 +29,7 @@ Calculé selon la luminance relative sRGB : canal linéarisé `c/12.92` si `c �
 - Ratio Texte/Fond = **8.38:1**, au-dessus du seuil WCAG AA de 4.5:1. Recalculable par script sur ces deux hex.
 
 ## Formes & style
-- Formes rondes et silhouettes lisibles : aucune arête agressive sur les habitants du jardin.
+- **Aucune arête vive, aucun pic** : formes rondes et silhouettes lisibles, aucune arête agressive sur les habitants du jardin, pas de cône, pas de pointe.
 - Low-poly assumé, facettes douces, une seule forme par type de plante-défense.
 - Aplats de couleur unis, éventuellement ombrés en douceur ; pas de textures photo.
 
@@ -44,6 +44,22 @@ Quatre familles de végétaux instanciées, une teinte dominante par famille, pr
 
 - Une famille = une géométrie = un draw call ; la variation vient de l’échelle, de la rotation et de la teinte d’instance (bornée entre − 22 % et + 30 %), jamais d’un nouveau maillage.
 - Les accents internes (`flowerAlt`, `grassTall`, `stem`) restent dans la famille : contraste doux, pas de saut de teinte.
+
+### Silhouettes d'ombre
+
+| Profil | Proportions (rayons) | Teinte `SILHOUETTE_TINTS` | ΔE76 sol / chemin | Élément animé |
+|---|---|---|---|---|
+| `ronde` | 2,00 × 1,16 | `#5c7e87` | 49,4 / 43,3 | clignement des yeux, 0,9 s |
+| `oreillue` | 1,55 × 2,22 | `#546583` | 60,1 / 53,4 | balancement des oreilles, 1,2 s |
+| `haute` | 1,00 × 2,89 | `#4b3b54` | 72,8 / 57,6 | marche des pattes, 0,6 s |
+
+- Camaïeu froid, du plus clair (la ronde, accueillante) au plus sombre (la haute, la plus menaçante) : ΔE76 ≥ 40 sur le sol `#faf3e3` comme sur le chemin `#bfa072`, et ≥ 17 entre deux silhouettes.
+- Trois masses rondes seulement, oreilles et pattes en ellipsoïdes, aucune pointe ; proportions qui diffèrent de plus de 15 % (largeur −22 %, −35 %, −50 %).
+
+### Projectiles
+
+- Teintes par type de tour, reprises de son matériau : Pousse `#6ec6b5` (niv. 2 `#8bdccc`), Floraison `#c9a7d8` (niv. 2 `#d6bce1`). Baie facettée de 6 cm, non tone-mappée, sans ombre portée.
+- Marque d'impact et flash de touche : corail `#e8907f`, translucide, 0,5 s au sol ; la marque garde cette teinte d'alerte, jamais celle de la tour.
 
 ## Lumière & effets
 - Lumière de fin d’après-midi, chaude et rasante, comme une clairière au soleil couchant.
