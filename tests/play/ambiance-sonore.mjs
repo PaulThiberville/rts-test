@@ -1,7 +1,8 @@
 // Playtest de l'Epic #48 — ambiance sonore : un bloc par critère, dans l'ordre de l'Epic.
 // `state.audio` n'est qu'un snapshot : la sonde Web Audio (lib/audio-probe.mjs) est posée
 // avant les chargements pour écouter la nappe et les enveloppes d'effets. Le Web Audio ne
-// s'accélère pas : le bloc 2 dure 60 s réelles (~85 s au total).
+// s'accélère pas : le bloc 2 dure 60 s réelles et le bloc 3 mesure 9 enveloppes de 2 s
+// (3 essais × 3 effets, davantage si un essai est invalidé) : compter ~110 s au total.
 import { readdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { analyseAmbience, installProbe, measureEffect } from './lib/audio-probe.mjs'
@@ -33,6 +34,64 @@ function waitWallClock(page, ms) {
       resolve()
     }, 25)
   }), ms)
+}
+/** Médiane d'une liste de nombres (robuste à un essai isolé aberrant). */
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+/** Mesures par effet du critère 3 : `VALID_RUNS` essais valides, `MEASURE_ATTEMPTS` essais au plus. */
+const VALID_RUNS = 3
+const MEASURE_ATTEMPTS = 6
+/** Pas d'échantillonnage de `measureEffect` et écart maximal toléré entre deux échantillons. */
+const SAMPLE_STEP_MS = 50
+const MAX_SAMPLE_GAP_MS = 2 * SAMPLE_STEP_MS
+/** Durée d'une mesure d'enveloppe : 0,5 s de plancher + 1,5 s d'analyse (cf. lib/audio-probe.mjs). */
+const MEASURE_DURATION_MS = 2000
+/**
+ * Borne de `tail`, dérivée de la mesure : critère de design (≤ 1000 ms) + un pas
+ * d'échantillonnage (50 ms, le retour sous le plancher n'est vu qu'à l'échantillon suivant)
+ * + la fenêtre d'analyse de l'AnalyserNode d'enveloppe (21 ms) = 1071 ms, arrondis à 1100 ms.
+ * Les `tail` mesurés par le design sont 101/350/150 ms : la marge couvre la quantification, pas
+ * un relâchement du critère. Elle reste loin des 2 s d'un effet « long » : une régression
+ * d'enveloppe au-delà de 1,1 s est encore détectée.
+ */
+const TAIL_LIMIT_MS = 1100
+/**
+ * `measureEffect` lit la crête sur un échantillonnage de 50 ms et une fenêtre d'analyse de
+ * 21 ms : sous forte charge CPU, un échantillon peut être perdu (l'écart entre deux mesures
+ * dépasse alors deux pas) et `tail` devient ininterprétable — ce n'est pas un résultat, c'est
+ * une mesure invalide : elle est retentée, jamais comparée à la borne. Les essais valides
+ * restent répétés : `above` retient la meilleure crête (un échantillon raté ne peut que
+ * minorer un pic réel, jamais l'inventer) et `tail` leur médiane (un essai isolé aberrant).
+ */
+async function measureEffectRobust(page, event) {
+  const runs = []
+  const invalid = []
+  for (let attempt = 0; attempt < MEASURE_ATTEMPTS && runs.length < VALID_RUNS; attempt += 1) {
+    // La pose de tour occupe `slot-1` : sans libération, `place()` refuse et aucun effet n'est
+    // joué. On remet aussi à zéro le tir automatique de la tour précédente, qui fausserait
+    // le plancher de nappe du nouvel essai.
+    if (event === 'plant') await page.evaluate(() => window.__game.towers.reset())
+    // Pas et durée passés explicitement : le défaut de `measureEffect` ne doit pas pouvoir
+    // diverger silencieusement de `SAMPLE_STEP_MS`/`MEASURE_DURATION_MS`.
+    const run = await measureEffect(page, event, MEASURE_DURATION_MS, SAMPLE_STEP_MS)
+    if (run.maxGap > MAX_SAMPLE_GAP_MS) { invalid.push(Math.round(run.maxGap)); continue }
+    runs.push(run)
+  }
+  if (runs.length < VALID_RUNS) {
+    throw new Error(`mesure invalide de « ${event} » : ${runs.length} essai(s) valide(s) sur ${MEASURE_ATTEMPTS} (écarts d'échantillonnage ${invalid.join(', ') || 'aucun'} ms)`)
+  }
+  return {
+    above: Math.max(...runs.map((run) => run.above)),
+    tail: median(runs.map((run) => run.tail)),
+    firedAt: Math.max(...runs.map((run) => run.firedAt)),
+    invalid,
+    // Dispersion brute : une médiane seule masquerait un essai aberrant.
+    aboves: runs.map((run) => Math.round(run.above * 10) / 10),
+    tails: runs.map((run) => Math.round(run.tail)),
+  }
 }
 export default async function ({ page, load, state }) {
   await page.addInitScript(installProbe)
@@ -86,6 +145,13 @@ export default async function ({ page, load, state }) {
     await shot(page, 'c2-60s')
   })
   // Critère 3 — un effet distinct et feutré (≤ 1 s) par action, ≤ 3 déclenchements/s.
+  //
+  // Tolérance de *mesure* (jamais de design) : `tail` est le premier échantillon revenu sous le
+  // plancher (+0,5 dB) après le pic, sur un pas de 50 ms. Il intègre donc jusqu'à un pas de
+  // quantification (+50 ms) et la fenêtre d'analyse (+21 ms) : côté test, `TAIL_LIMIT_MS` = 1100 ms.
+  // Chaque effet a sa propre enveloppe (`plant` s'éteint même en ~0,2 s, voices.js:305) : la
+  // borne commune reste celle du design. Un essai dont un échantillon est perdu est déclaré
+  // invalide et retenté (cf. `measureEffectRobust`), il ne relâche pas la borne.
   await block(3, async () => {
     // L'effet `plant` passe par le système de tours (`measureEffect`) : le niveau doit être monté.
     await load('?niveau=1'); await page.mouse.click(640, 360); await waitUnlocked(page)
@@ -96,7 +162,7 @@ export default async function ({ page, load, state }) {
       // La tour posée à `plant` tire en continu (`shoot`) : ses effets concurrents empêcheraient le
       // retour au plancher des deux mesures suivantes. On la retire, une fois `plant` mesuré.
       if (name === 'wave') await page.evaluate(() => window.__game.towers.reset())
-      const measured = await measureEffect(page, event)
+      const measured = await measureEffectRobust(page, event)
       // Le tir automatique des tours (`tower-shot` → `shoot`, plusieurs fois/s) peut écraser
       // `lastEffect` entre l'émission et la lecture : on interroge le cumul monotone `sound.played`.
       try {
@@ -105,28 +171,53 @@ export default async function ({ page, load, state }) {
         const played = await page.evaluate(() => JSON.parse(JSON.stringify(window.__game.state.sound.played)))
         throw new Error(`effet « ${name} » absent de sound.played après 2 s (played=${played.join(', ') || 'aucun'})`)
       }
-      effects.push({ name, at: measured.firedAt, tail: measured.tail })
-      check(measured.above >= 3, `critère 3 : ${name} inaudible (${measured.above.toFixed(1)} dB au-dessus de la nappe)`)
-      check(measured.tail <= 1000, `critère 3 : ${name} dure ${Math.round(measured.tail)} ms > 1 s (enveloppe audible)`)
+      const detail = `above=${measured.aboves.join('/')} dB, tail=${measured.tails.join('/')} ms`
+      check(measured.above >= 3, `critère 3 : ${name} inaudible (${measured.above.toFixed(1)} dB au-dessus de la nappe ; essais ${detail})`)
+      // Borne de mesure dérivée du design (1000 ms + 50 ms d'échantillonnage + 21 ms de fenêtre).
+      check(measured.tail <= TAIL_LIMIT_MS, `critère 3 : ${name} dure ${Math.round(measured.tail)} ms > ${TAIL_LIMIT_MS} ms (enveloppe audible ; essais ${detail})`)
+      effects.push({ name, at: measured.firedAt, tail: measured.tail, aboves: measured.aboves, tails: measured.tails, invalid: measured.invalid })
       await shot(page, `c3-${name}`)
     }
     check(new Set(effects.map((effect) => effect.name)).size === 3, `critère 3 : effets ${effects.map((effect) => effect.name).join(', ')} non distincts`)
     check(effects.every((effect, index) => index === 0 || effect.at > effects[index - 1].at), `critère 3 : horodatages non croissants (${effects.map((effect) => effect.at).join(' ≤ ')})`)
-    console.log(JSON.stringify({ c3: effects.map((effect) => `${effect.name}:${Math.round(effect.tail)}ms`) }))
+    console.log(JSON.stringify({
+      c3: effects.map((effect) => `${effect.name}:${Math.round(effect.tail)}ms`),
+      invalides: effects.map((effect) => `${effect.name}:${effect.invalid.length}`),
+      essais: effects.map((effect) => `${effect.name} above=[${effect.aboves.join(', ')}] tail=[${effect.tails.join(', ')}]`),
+    }))
     // Fenêtre glissante de 1 s du limiteur : on attend qu'elle soit vide avant la rafale.
     await waitWallClock(page, 1100)
-    const delta = await page.evaluate(() => new Promise((resolve) => {
+    // La rafale est horodatée côté page : sous charge CPU, `setInterval(100)` dérive et les
+    // 10 appels peuvent s'étaler sur plus d'une seconde — le limiteur en accepte alors
+    // légitimement davantage sur la rafale entière. On juge donc la contrainte de design
+    // (« ≤ 3 acceptés dans toute fenêtre de 1 s ») sur les instants réels d'acceptation. Un
+    // appel est accepté si `effectCount` avance et si `lastEffect` est la voix `kill` de
+    // l'ombre repoussée (main.js) : un coup au cœur ou un tir ne sont pas comptés.
+    const burst = await page.evaluate(() => new Promise((resolve) => {
       const audio = () => window.__game.state.audio
-      const start = audio().effectCount
-      let calls = 0
+      const calls = []
       const id = setInterval(() => {
+        // `state.audio` n'est pas un instantané mais une vue à getters : on lit des scalaires.
+        const count = audio().effectCount
         window.__game.emit('shade-repelled')
-        if (++calls < 10) return
+        const after = audio()
+        calls.push({
+          t: performance.now(),
+          accepted: after.effectCount > count && after.lastEffect?.name === 'kill',
+        })
+        if (calls.length < 10) return
         clearInterval(id)
-        resolve(audio().effectCount - start)
+        resolve(calls)
       }, 100)
     }))
-    check(delta === 3, `critère 3 : ${delta} effets pour 10 appels en 1 s, attendu exactement 3 (3/s)`)
+    const acceptedAt = burst.filter((call) => call.accepted).map((call) => call.t)
+    const perSecond = Math.max(0, ...acceptedAt.map((t) => acceptedAt.filter((other) => other >= t && other - t < 1000).length))
+    check(perSecond <= 3, `critère 3 : ${perSecond} effets acceptés dans une même seconde (limite 3/s)`)
+    // Au moins trois acceptés : le limiteur laisse passer le débit autorisé. La fenêtre « première
+    // seconde » a été abandonnée : sous charge, les appels s'étalent et le 3e tombe au-delà.
+    check(acceptedAt.length >= 3, `critère 3 : ${acceptedAt.length} effet(s) accepté(s) sur ${burst.length} appels, attendu au moins 3`)
+    check(acceptedAt.length < burst.length, `critère 3 : aucune rafale refusée (${acceptedAt.length}/${burst.length} acceptés, limiteur inactif)`)
+    console.log(JSON.stringify({ rafale: { appels: burst.length, acceptes: acceptedAt.length, etendueMs: Math.round(burst.at(-1).t - burst[0].t), parSeconde: perSecond } }))
     await shot(page, 'c3-limite')
   })
   // Critère 4 — bouton muet au clavier (Entrée puis Espace) : silence, gain rétabli à l'identique.
