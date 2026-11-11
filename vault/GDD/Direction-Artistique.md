@@ -1,7 +1,7 @@
 ---
 tags: [gdd]
 status: validated
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Direction artistique
@@ -14,11 +14,11 @@ Référence unique pour textureur, illustrateur, VFX et UI. Découle de [[Vision
 |---|---|---|
 | Fond | `#faf3e3` | Ciel et sol de la clairière, aube douce |
 | Primaire (joueur) | `#6ec6b5` | Plantes-défenses et éléments du gardien |
-| Danger | `#e8907f` | Ombres hostiles et alertes |
+| Danger | `#e8907f` | Alertes et flash d'impact : marque au sol, gerbes de dégâts |
 | Récompense | `#f2c66d` | Butin, étoiles et gains de niveau |
 | Texte | `#3e4a43` | Texte d’interface sur fond clair |
 
-Teintes pastel, désaturées, jamais fluo : chaque rôle reste reconnaissable d’un coup d’œil, même sur petit écran. Une seule teinte par type de plante-défense (pilier « Mignon et lisible » de [[Vision]]).
+Teintes pastel, désaturées, jamais fluo : chaque rôle reste reconnaissable d’un coup d’œil, même sur petit écran. Une seule teinte par type de plante-défense, éclaircie d’un cran au niveau 2 dans la même famille (pilier « Mignon et lisible » de [[Vision]]).
 
 ### Contraste texte / fond
 
@@ -29,7 +29,7 @@ Calculé selon la luminance relative sRGB : canal linéarisé `c/12.92` si `c �
 - Ratio Texte/Fond = **8.38:1**, au-dessus du seuil WCAG AA de 4.5:1. Recalculable par script sur ces deux hex.
 
 ## Formes & style
-- Formes rondes et silhouettes lisibles : aucune arête agressive sur les habitants du jardin.
+- **Aucune arête vive, aucun pic** : formes rondes et silhouettes lisibles, aucune arête agressive sur les habitants du jardin, pas de cône, pas de pointe.
 - Low-poly assumé, facettes douces, une seule forme par type de plante-défense.
 - Aplats de couleur unis, éventuellement ombrés en douceur ; pas de textures photo.
 
@@ -44,6 +44,22 @@ Quatre familles de végétaux instanciées, une teinte dominante par famille, pr
 
 - Une famille = une géométrie = un draw call ; la variation vient de l’échelle, de la rotation et de la teinte d’instance (bornée entre − 22 % et + 30 %), jamais d’un nouveau maillage.
 - Les accents internes (`flowerAlt`, `grassTall`, `stem`) restent dans la famille : contraste doux, pas de saut de teinte.
+
+### Silhouettes d'ombre
+
+| Profil | Proportions (rayons) | Teinte `SILHOUETTE_TINTS` | ΔE76 sol / chemin | Élément animé |
+|---|---|---|---|---|
+| `ronde` | 2,00 × 1,16 | `#5c7e87` | 49,4 / 43,3 | clignement des yeux, 0,9 s |
+| `oreillue` | 1,55 × 2,22 | `#546583` | 60,1 / 53,4 | balancement des oreilles, 1,2 s |
+| `haute` | 1,00 × 2,89 | `#4b3b54` | 72,8 / 57,6 | marche des pattes, 0,6 s |
+
+- Camaïeu froid, du plus clair (la ronde, accueillante) au plus sombre (la haute, la plus menaçante) : ΔE76 ≥ 40 sur le sol `#faf3e3` comme sur le chemin `#bfa072`, et ≥ 17 entre deux silhouettes.
+- Trois masses rondes seulement, oreilles et pattes en ellipsoïdes, aucune pointe ; proportions qui diffèrent de plus de 15 % (largeur −22 %, −35 %, −50 %).
+
+### Projectiles
+
+- Teintes par type de tour, reprises de son matériau : Pousse `#6ec6b5` (niv. 2 `#8bdccc`), Floraison `#c9a7d8` (niv. 2 `#d6bce1`). Baie facettée de 6 cm, non tone-mappée, sans ombre portée.
+- Marque d'impact et flash de touche : corail `#e8907f`, translucide, 0,5 s au sol ; la marque garde cette teinte d'alerte, jamais celle de la tour.
 
 ## Lumière & effets
 - Lumière de fin d’après-midi, chaude et rasante, comme une clairière au soleil couchant.
@@ -94,21 +110,31 @@ Ces familles, valeurs de lumière et densités d’ambiance sont la référence 
 
 Ton apaisant comme le reste de la clairière : synthés doux (nappes, cloches feutrées), percussion légère (bois, peaux, pas de batterie sèche). Aucun son ne doit surprendre le joueur en pause. Découle de [[Vision]] : « Sérénité d’abord », et ne sonorise que les gestes de [[Mecaniques]].
 
-Trois effets à livrer pour l’Epic #48, plus « victoire » déjà validée :
+Neuf voix synthétisées, aucun asset : les familles de timbre de `VOICE_FAMILIES` — cloche (`bell`) qui rassure, nappe (`pad`) qui respire, percussion bois (`wood`) qui ponctue — et une ligne par voix de `EFFECT_NAMES`.
 
-| Effet | Rôle | Caractère |
-|---|---|---|
-| « poser une plante-défense » (« poser une tour ») | Confirmer la pose d’une tour-plante | Cloche douce, une note montante, 200 ms |
-| « vague » | Annoncer l’arrivée des ombres | Nappe descendante discrète, 1 s, sans urgence |
-| « ombre repoussée » | Confirmer qu’une ombre recule | Cloche feutrée, durée ≤ 1 s, aucune urgence |
-| « victoire » | Clore un niveau | Trois notes de harpe montantes, récompense calme |
+| Effet | Moment | Famille (cloche/nappe/percussion bois) | Caractère | Durée |
+|---|---|---|---|---|
+| `home` — accueil | Premier geste, entrée ou retour à l’accueil | cloche (`bell`) | Cloche claire qui monte, comme une porte qu’on ouvre | ~0,5 s |
+| `plant` — pose | Poser une plante-défense (« poser une tour ») | cloche (`bell`) | Une note montante, confirmation douce | 0,2 s |
+| `upgrade` — amélioration | Améliorer une tour posée | percussion bois (`wood`) | Deux « toc » ascendants, la plante gagne un cran | ~0,3 s |
+| `shoot` — tir | Tir automatique d’une tour | percussion bois (`wood`) | « Toc » très court, feutré, ± 5 % de hauteur | ~0,1 s |
+| `kill` — ombre repoussée | Une ombre recule (alias `repelled`) | cloche (`bell`) | Cloche feutrée descendante, aucune urgence | 0,3 s |
+| `core-hit` — cœur touché | Le cœur perd des PV | nappe (`pad`) | Nappe grave qui s’enfonce, jamais percussive | ~0,5 s |
+| `wave` — vague | Annoncer une vague | nappe (`pad`) | Nappe descendante discrète, sans urgence | 1 s |
+| `victory` — victoire | Clore un niveau | cloche (`bell`) | Trois notes de harpe montantes (C5, E5, G5) | ~0,6 s |
+| `defeat` — défaite | Le cœur tombe à zéro | nappe (`pad`) | Nappe descendante résignée, sans dureté | 1 s |
 
-- Volume par défaut : 40 %, jamais plus de 50 % à la première ouverture ; le joueur ajuste ensuite.
-- Règle des impacts : ≤ 3 fois par seconde, pas de mitraillette sonore.
+- Volume par défaut : **40 %** (plage **35–50 %**) ; le joueur ajuste ensuite, la valeur est mémorisée dans le navigateur.
+- Règle des impacts : **≤ 3 déclenchements par seconde et par effet**, pas de mitraillette sonore.
+- Enveloppe commune : attaque ≥ 10 ms, décroissance ≥ 90 ms, rampe vers 0,0001 : aucun son ne claque ni ne se coupe net.
 
 ### Silence et muet
 
-Le bouton muet est atteignable au clavier (Tab puis Entrée ou Espace) et porte un libellé localisé. Muet, le gain master tombe à zéro et le jeu laisse place au silence, compris comme le jardin qui respire : aucune nappe, aucun effet. Un second appui rétablit exactement le volume précédent. Sur mobile, l’ambiance de fond est coupée par défaut ; les effets restent audibles tant que le joueur ne coupe pas le son.
+Le bouton muet est atteignable au clavier (Tab puis Entrée ou Espace) et porte un libellé localisé. Muet, le gain master tombe à **0** et le jeu laisse place au silence, compris comme le jardin qui respire : aucune nappe, aucun effet. Un second appui rétablit le volume précédent à **± 0,01** près. Sur mobile, l’ambiance de fond est coupée par défaut ; les effets restent audibles tant que le joueur ne coupe pas le son.
+
+### Reprise après mise en arrière-plan
+
+Au retour d’onglet, `resume()` réveille le contexte sans le recréer : `state === 'running'` et la nappe reprend sans rejouer la cloche d’accueil. Muet, le gain master est réappliqué à 0 : le contexte tourne, mais aucune nappe n’est audible.
 
 ## i18n
 

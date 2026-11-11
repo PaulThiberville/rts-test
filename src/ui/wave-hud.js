@@ -1,3 +1,4 @@
+import { createIcon } from '../art/icons.js'
 import { t } from '../i18n/index.js'
 
 let hudCount = 0
@@ -15,14 +16,28 @@ function finite(value, fallback = 0) {
 }
 
 /**
+ * Aperçu de vitrine : `npm run showcase` appelle la fabrique avec un état sans champ
+ * de jeu (ni `wave`, ni `core`, ni `run`). On montre alors une fin de victoire, seule
+ * façon de juger la carte et ses trois actions.
+ */
+const PREVIEW = Object.freeze({
+  wave: Object.freeze({ index: 6, total: 6, countdown: 0, phase: 'wave' }),
+  core: Object.freeze({ hp: 7, max: 12 }),
+  run: Object.freeze({ elapsed: 252, outcome: 'victory' }),
+})
+
+/**
  * HUD de vague : bandeau haut (vague en cours, compte à rebours, vie du cœur) et
- * écran de fin plein cadre (victoire ou défaite, vague atteinte, durée, « Rejouer »).
- * Purement présentation : `update` lit l'état, toute décision de jeu remonte par `onRestart`.
+ * écran de fin plein cadre (victoire ou défaite, vague atteinte, durée, puis trois
+ * actions en victoire — « Niveau suivant », « Rejouer », « Retour aux jardins » — et
+ * deux en défaite).
+ * Purement présentation : `update` lit l'état, toute décision de jeu remonte par les
+ * rappels `onNext`, `onRestart` et `onExit`.
  * @param {HTMLElement} root
- * @param {{ onRestart?: () => void }} [options]
+ * @param {{ onRestart?: () => void, onNext?: () => void, onExit?: () => void }} [options]
  * @returns {{ update(state?: object): void, destroy(): void }}
  */
-export function createWaveHud(root, { onRestart } = {}) {
+export function createWaveHud(root, { onRestart, onNext, onExit } = {}) {
   const count = ++hudCount
   const waveId = `wave-hud-wave-${count}`
   const titleId = `wave-hud-end-title-${count}`
@@ -45,6 +60,10 @@ export function createWaveHud(root, { onRestart } = {}) {
   const coreLine = document.createElement('p')
   coreLine.className = 'wave-hud__core'
   coreLine.setAttribute('role', 'status')
+  // Cœur décoratif devant la valeur : le libellé « Cœur 7/12 » reste le texte annoncé.
+  const coreText = document.createElement('span')
+  coreText.className = 'wave-hud__core-value'
+  coreLine.append(createIcon('heart', { size: 16, className: 'wave-hud__core-icon' }), coreText)
 
   const meter = document.createElement('div')
   meter.className = 'wave-hud__meter'
@@ -75,12 +94,35 @@ export function createWaveHud(root, { onRestart } = {}) {
   const endTime = document.createElement('p')
   endTime.className = 'end-screen__time'
 
-  const replay = document.createElement('button')
-  replay.type = 'button'
-  replay.className = 'end-screen__replay'
-  replay.textContent = t('end.replay')
+  const actions = document.createElement('div')
+  actions.className = 'end-screen__actions'
 
-  card.append(endTitle, endWave, endTime, replay)
+  /**
+   * Une action de fin de niveau : bouton natif, libellé localisé, `data-action` stable
+   * pour les tests et le câblage.
+   * @param {'next'|'replay'|'exit'} action
+   * @param {string} label
+   * @param {boolean} primary
+   */
+  function createAction(action, label, primary) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.action = action
+    button.className = primary
+      ? 'end-screen__button end-screen__button--primary'
+      : 'end-screen__button'
+    button.textContent = label
+    return button
+  }
+
+  const next = createAction('next', t('end.next'), true)
+  // `end-screen__replay` reste portée par le bouton : les scénarios de playtest le ciblent.
+  const replay = createAction('replay', t('end.replay'), false)
+  replay.classList.add('end-screen__replay')
+  const exit = createAction('exit', t('end.exit'), false)
+
+  actions.append(next, replay, exit)
+  card.append(endTitle, endWave, endTime, actions)
   end.append(card)
   root.append(el, end)
 
@@ -90,9 +132,9 @@ export function createWaveHud(root, { onRestart } = {}) {
   /** @type {Map<HTMLElement, boolean>} */
   const inertNeighbours = new Map()
 
-  /** @param {boolean} next */
-  function setBackdropInert(next) {
-    if (next) {
+  /** @param {boolean} hide */
+  function setBackdropInert(hide) {
+    if (hide) {
       for (const node of root.children) {
         if (node === end || !(node instanceof HTMLElement) || inertNeighbours.has(node)) continue
         inertNeighbours.set(node, node.inert)
@@ -105,7 +147,8 @@ export function createWaveHud(root, { onRestart } = {}) {
   }
 
   // Ceinture et bretelles : `Tab`/`Shift+Tab` tournent dans la carte au lieu de
-  // rejoindre la barre du navigateur, et la boucle repart de « Rejouer ».
+  // rejoindre la barre du navigateur, et la boucle repart de la première action
+  // affichée (jamais d'un bouton masqué ou désactivé).
   function handleTab(event) {
     if (event.key !== 'Tab' || end.hidden) return
     const focusables = card.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')
@@ -125,6 +168,8 @@ export function createWaveHud(root, { onRestart } = {}) {
   const run = { elapsed: 0, outcome: null }
   const banner = { index: -1, total: -1, countdown: -1, phase: null, hp: -1, max: -1 }
   const ending = { outcome: null, index: -1, total: -1, elapsed: -1 }
+  /** Mode d'actions affiché : `'next'` de plus en victoire, absent en défaite. */
+  let actionMode = null
 
   /** @param {HTMLElement} node @param {string} value */
   function setText(node, value) {
@@ -150,7 +195,7 @@ export function createWaveHud(root, { onRestart } = {}) {
     const counting = wave.phase === 'countdown'
     if (windupLine.hidden === counting) windupLine.hidden = !counting
     if (counting) setText(windupLine, t('wave.windup', { n: wave.index, s: wave.countdown }))
-    setText(coreLine, t('core.hp', { hp: core.hp, max: core.max }))
+    setText(coreText, t('core.hp', { hp: core.hp, max: core.max }))
     const ratio = core.max > 0 ? Math.min(1, Math.max(0, core.hp / core.max)) : 0
     meterFill.style.width = `${Math.round(ratio * 100)}%`
     el.dataset.phase = wave.phase ?? ''
@@ -175,17 +220,34 @@ export function createWaveHud(root, { onRestart } = {}) {
     end.dataset.outcome = victory ? 'victory' : 'defeat'
     setText(endWave, t('end.wave', { n: wave.index, total: wave.total }))
     setText(endTime, t('end.time', { time: formatDuration(run.elapsed) }))
+    // Défaite : « Niveau suivant » ne peut pas exister, il sort de l'affichage, de la
+    // boucle de tabulation (`button:not([disabled])`) et de l'arbre d'accessibilité.
+    const mode = victory ? 'victory' : 'defeat'
+    if (actionMode !== mode) {
+      actionMode = mode
+      next.hidden = !victory
+      next.disabled = !victory
+    }
     if (end.hidden) {
       end.hidden = false
       setBackdropInert(true)
-      replay.focus({ preventScroll: true })
+      // Repli d'accessibilité : l'action principale prend le focus, jamais le fond.
+      ;(victory ? next : replay).focus({ preventScroll: true })
     }
   }
 
   function handleRestart() {
     onRestart?.()
   }
+  function handleNext() {
+    onNext?.()
+  }
+  function handleExit() {
+    onExit?.()
+  }
   replay.addEventListener('click', handleRestart)
+  next.addEventListener('click', handleNext)
+  exit.addEventListener('click', handleExit)
   end.addEventListener('keydown', handleTab)
 
   function clampedInt(value, min) {
@@ -195,7 +257,11 @@ export function createWaveHud(root, { onRestart } = {}) {
   return {
     /** @param {object} [state] */
     update(state = {}) {
-      const nextWave = state.wave
+      const live = state && typeof state === 'object' ? state : {}
+      // Vitrine : état sans aucun champ de jeu → aperçu de fin de victoire.
+      const source = !live.wave && !live.core && !live.run ? PREVIEW : live
+
+      const nextWave = source.wave
       if (nextWave && typeof nextWave === 'object') {
         if ('index' in nextWave || 'total' in nextWave || 'countdown' in nextWave || 'phase' in nextWave) reveal()
         if ('index' in nextWave) wave.index = clampedInt(nextWave.index, 0)
@@ -204,13 +270,13 @@ export function createWaveHud(root, { onRestart } = {}) {
         if ('phase' in nextWave) wave.phase = nextWave.phase ?? null
       }
 
-      const nextCore = state.core
+      const nextCore = source.core
       if (nextCore && typeof nextCore === 'object') {
         if ('hp' in nextCore) core.hp = Math.max(0, finite(nextCore.hp))
         if ('max' in nextCore) core.max = Math.max(0, finite(nextCore.max))
       }
 
-      const nextRun = state.run
+      const nextRun = source.run
       if (nextRun && typeof nextRun === 'object') {
         if ('elapsed' in nextRun) run.elapsed = Math.max(0, finite(nextRun.elapsed))
         if ('outcome' in nextRun) run.outcome = nextRun.outcome ?? null
@@ -221,6 +287,8 @@ export function createWaveHud(root, { onRestart } = {}) {
     },
     destroy() {
       replay.removeEventListener('click', handleRestart)
+      next.removeEventListener('click', handleNext)
+      exit.removeEventListener('click', handleExit)
       end.removeEventListener('keydown', handleTab)
       setBackdropInert(false)
       el.remove()

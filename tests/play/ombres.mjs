@@ -205,30 +205,26 @@ async function clickCanvas(page, point) {
   await page.mouse.up()
 }
 
+/**
+ * Attend la barre des tours, permanente depuis #148 : visible dès le montage
+ * (data-open="true", panneau opaque non vide) et sans poignée de repli.
+ * Aucun clic : l'ouverture ne dépend plus d'une interaction.
+ */
 async function openBar(page) {
-  const open = await page.evaluate(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'true')
-  if (!open) await page.click('.tower-bar__handle')
-  await page.waitForFunction(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'true')
   await page.waitForFunction(() => {
-    const panel = document.querySelector('.tower-bar__panel')
-    return panel !== null && getComputedStyle(panel).opacity === '1'
+    const bar = document.querySelector('.tower-bar')
+    const panel = bar?.querySelector('.tower-bar__panel')
+    if (!bar || !panel) return false
+    const rect = panel.getBoundingClientRect()
+    const style = getComputedStyle(panel)
+    return bar.dataset.open === 'true'
+      && style.visibility !== 'hidden'
+      && style.opacity === '1'
+      && rect.width > 0 && rect.height > 0
   })
-}
-
-async function closeBar(page) {
-  const open = await page.evaluate(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'true')
-  if (!open) return
-  await page.click('.tower-bar__handle')
   await page.waitForFunction(() =>
-    document.querySelector('.tower-bar')?.dataset.open === 'false')
-  // Fin de la transition d'opacité : la capture ne montre pas le panneau en fondu.
-  await page.waitForFunction(() => {
-    const panel = document.querySelector('.tower-bar__panel')
-    return panel === null || getComputedStyle(panel).opacity === '0'
-  })
+    document.querySelector('.tower-bar__handle') === null
+    && document.querySelector('button[data-action="toggle-towers"]') === null)
 }
 
 /** L'écran de fin a fini son animation d'entrée : capture non translucide. */
@@ -608,7 +604,8 @@ export default async function ({ page, load, state }) {
       await clickCanvas(page, target)
       await page.waitForFunction(() => window.__game.state.towers.length === 1)
     }
-    await closeBar(page)
+    // La barre est permanente : aucune poignée ne la replie après la pose.
+    await openBar(page)
 
     const placed = (await state()).towers[0]
     const type = placed?.type ?? 'sprout'

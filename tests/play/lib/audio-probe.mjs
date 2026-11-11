@@ -82,17 +82,21 @@ export function analyseAmbience(samples) {
 }
 // Déclenche `event` (pose de Pousse pour `plant`, sinon émission sur le bus) en suivant
 // l'enveloppe audible : 10 pas de plancher de nappe puis 1,5 s de mesure à 50 ms. `tail` = temps
-// du retour sous `floor + 0,5 dB` après le pic ; l'enveloppe de gain s'éteint à 1,00 s (le
-// `stop()` planifié de la vague à 1,02 s ne doit pas être mesuré).
+// du retour sous `floor + 0,5 dB` après le pic, en temps relatif au tir ; l'enveloppe de gain
+// s'éteint à 1,00 s (le `stop()` planifié de la vague à 1,02 s ne doit pas être mesuré).
+// `firedAt` est en revanche un horodatage mural (`Date.now()`), même échelle que
+// `state.audio.lastEffect.at` : les mesures successives restent comparables entre elles.
 export async function measureEffect(page, event, durationMs = 2000, stepMs = 50) {
-  const { samples, firedAt } = await page.evaluate(({ name, duration, step }) => new Promise((resolve) => {
+  const { samples, firedAt, firedWall } = await page.evaluate(({ name, duration, step }) => new Promise((resolve) => {
     const samples = []
     const start = performance.now()
     let firedAt = null
+    let firedWall = null
     const id = setInterval(() => {
       const t = performance.now() - start
       if (firedAt === null && samples.length >= 10) {
         firedAt = t
+        firedWall = Date.now()
         if (name === 'plant') {
           window.__game.towers.selectType('sprout'); window.__game.towers.place('slot-1')
         } else window.__game.emit(name)
@@ -100,12 +104,119 @@ export async function measureEffect(page, event, durationMs = 2000, stepMs = 50)
       samples.push({ t, db: window.__probe.dbFast() })
       if (t < duration) return
       clearInterval(id)
-      resolve({ samples, firedAt })
+      resolve({ samples, firedAt, firedWall })
     }, step)
   }), { name: event, duration: durationMs, step: stepMs })
   const floor = Math.max(...samples.slice(0, 10).map((s) => s.db))
   let peak = 10; let loud = 10
   for (let i = 10; i < samples.length; i++) if (samples[i].db > samples[peak].db) peak = i
   for (let i = peak; i < samples.length; i++) if (samples[i].db > floor + 0.5) loud = i
-  return { above: samples[peak].db - floor, tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt }
+  // Écart maximal entre deux échantillons (hors démarrage) : au-delà de deux pas, un échantillon
+  // a été perdu sous charge et `tail` n'est plus interprétable — l'appelant décide de retenter.
+  let maxGap = 0
+  for (let i = 2; i < samples.length; i++) maxGap = Math.max(maxGap, samples[i].t - samples[i - 1].t)
+  return {
+    above: samples[peak].db - floor,
+    tail: samples[Math.min(loud + 1, samples.length - 1)].t - firedAt,
+    firedAt: firedWall,
+    maxGap,
+  }
+}
+
+// Sonde des voix de l'Epic #130 : `state.sound.played` dit ce que le jeu croit avoir
+// joué, cette sonde dit ce que le Web Audio a réellement programmé. Elle ne touche ni
+// au graphe ni aux gains (contrairement à `installProbe`, qui y branche des analyseurs) :
+// elle enveloppe la création des sources et la programmation des AudioParam, puis rend
+// un relevé sérialisable. `reset()` borne une mesure à un moment, `dump()` la restitue.
+// Aucune grandeur du jeu n'est modifiée : lecture seule, avant tout chargement.
+export function installVoiceProbe() {
+  const ctxProto = (window.BaseAudioContext ?? window.AudioContext)?.prototype
+  if (!ctxProto || window.__voiceProbe) return
+  /** Source → relevé ; les méthodes de programmation retrouvent leur nœud par ce biais. */
+  const entries = new WeakMap()
+  /** AudioParam → relevé de la source ou du gain qui le possède. */
+  const params = new Map()
+  const sources = []
+  const gains = []
+  const probe = {
+    reset() {
+      sources.length = 0
+      gains.length = 0
+      params.clear()
+    },
+    dump() {
+      return {
+        sources: sources.map((entry) => ({
+          kind: entry.kind,
+          type: entry.kind === 'osc' ? entry.node.type : 'noise',
+          startAt: entry.startAt,
+          freq: entry.freq.map((point) => ({ value: point.value, time: point.time })),
+        })),
+        gains: gains.map((entry) => ({
+          events: entry.events.map((event) => ({ method: event.method, value: event.value, time: event.time })),
+        })),
+      }
+    },
+  }
+  window.__voiceProbe = probe
+
+  const wrap = (name, describe) => {
+    const original = ctxProto[name]
+    if (typeof original !== 'function') return
+    ctxProto[name] = function (...args) {
+      const node = original.apply(this, args)
+      describe(node)
+      return node
+    }
+  }
+  wrap('createOscillator', (node) => {
+    const entry = { kind: 'osc', node, startAt: null, freq: [] }
+    sources.push(entry)
+    entries.set(node, entry)
+    params.set(node.frequency, entry)
+  })
+  wrap('createBufferSource', (node) => {
+    const entry = { kind: 'noise', node, startAt: null, freq: [] }
+    sources.push(entry)
+    entries.set(node, entry)
+  })
+  wrap('createGain', (node) => {
+    const entry = { kind: 'gain', node, events: [] }
+    gains.push(entry)
+    params.set(node.gain, entry)
+  })
+
+  // `start()` : l'instant demandé fait foi (« quand la voix sonne »), pas `currentTime`.
+  // Chromium expose `start` sur AudioScheduledSourceNode, mais chaque nœud peut en porter
+  // sa propre copie : on couvre les prototypes feuilles sans wrapper deux fois (marqueur).
+  const patchStart = (proto) => {
+    const start = proto?.start
+    if (typeof start !== 'function' || start.__voiceStart) return
+    const wrapper = function (when) {
+      const entry = entries.get(this)
+      if (entry) entry.startAt = typeof when === 'number' ? when : this.context.currentTime
+      return start.call(this, when)
+    }
+    wrapper.__voiceStart = true
+    proto.start = wrapper
+  }
+  for (const name of ['AudioScheduledSourceNode', 'OscillatorNode', 'AudioBufferSourceNode', 'ConstantSourceNode']) {
+    patchStart(window[name]?.prototype)
+  }
+
+  // Enveloppes : la rampe exponentielle vers le pic, puis vers 0,0001, donne attaque et décroissance.
+  const paramProto = window.AudioParam?.prototype
+  for (const method of ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime']) {
+    const original = paramProto?.[method]
+    if (typeof original !== 'function') continue
+    paramProto[method] = function (value, time) {
+      const entry = params.get(this)
+      if (entry) {
+        const point = { method, value, time }
+        if (entry.freq) entry.freq.push(point)
+        else if (entry.events) entry.events.push(point)
+      }
+      return original.call(this, value, time)
+    }
+  }
 }

@@ -15,9 +15,11 @@ import { LEVEL_6 } from './data/level-6.js'
 import { TOWERS } from './data/towers.js'
 import { t } from './i18n/index.js'
 import { createAudioToggle } from './ui/audio-toggle.js'
+import { createHighBar } from './ui/high-bar.js'
 import { createHomeScreen } from './ui/home.js'
 import { createLevelHud } from './ui/level-hud.js'
 import { createLevelSelect } from './ui/level-select.js'
+import { createSpeedSelector } from './ui/speed-selector.js'
 import { createTowerBar } from './ui/tower-bar.js'
 import { createWaveHud } from './ui/wave-hud.js'
 
@@ -109,19 +111,43 @@ game.state.unlocked = readUnlocked(progress.completed)
 
 const audio = createAudio({ volume: AUDIO_VOLUME, storageKey: AUDIO_VOLUME_KEY })
 
-// `state.audio` est recalculé à chaque lecture : l'état reste sérialisable et reflète
-// le contexte Web Audio (suspendu, mute, gain) sans recopie à maintenir.
-const audioState = { defaultVolume: AUDIO_VOLUME, volumeKey: AUDIO_VOLUME_KEY }
-for (const key of Object.keys(audio.getSnapshot())) {
-  Object.defineProperty(audioState, key, {
-    enumerable: true,
-    get: () => audio.getSnapshot()[key],
-  })
+/**
+ * Expose les clés d'un snapshot audio en getters : l'état observable reste
+ * sérialisable et suit le contexte Web Audio (suspendu, muet, gains) sans recopie
+ * à maintenir. Aucune valeur THREE n'entre dans `game.state`.
+ * @param {object} target objet recevant les propriétés
+ * @param {string[]} keys clés du snapshot à exposer
+ * @returns {object} l'objet complété
+ */
+function exposeSnapshot(target, keys) {
+  for (const key of keys) {
+    Object.defineProperty(target, key, {
+      enumerable: true,
+      get: () => audio.getSnapshot()[key],
+    })
+  }
+  return target
 }
-game.state.audio = audioState
+
+game.state.audio = exposeSnapshot(
+  { defaultVolume: AUDIO_VOLUME, volumeKey: AUDIO_VOLUME_KEY },
+  Object.keys(audio.getSnapshot()),
+)
+
+// Déclencheurs des neuf moments sonores : seuls les noms de `EFFECT_NAMES` (#136)
+// sont joués, la limite de 3 déclenchements/s étant imposée par `createAudio`.
+game.state.sound = exposeSnapshot(
+  { defaultVolume: AUDIO_VOLUME },
+  ['played', 'lastEffect', 'effectCount', 'resumeCount', 'families'],
+)
 
 game.on('wave-start', () => audio.play('wave'))
-game.on('shade-repelled', () => audio.play('repelled'))
+game.on('tower-shot', () => audio.play('shoot'))
+game.on('tower-upgraded', () => audio.play('upgrade'))
+game.on('shade-repelled', () => audio.play('kill'))
+game.on('heart-hit', () => audio.play('core-hit'))
+game.on('victory', () => audio.play('victory'))
+game.on('defeat', () => audio.play('defeat'))
 
 // Monté avant les autres HUD : la pastille est le premier arrêt de Tab, donc
 // atteignable en un seul appui au clavier.
@@ -133,36 +159,33 @@ const audioToggle = createAudioToggle(ui, {
 })
 audioToggle.update(audio.getSnapshot())
 
+// Sélecteur de vitesse : il ne décide de rien et remonte le choix, la boucle applique le
+// facteur. Son affichage suit `state.speed` à chaque image, donc un nouveau niveau ou un
+// « Rejouer » le ramène à ×1. Il vit avec le HUD du niveau, jamais dans les menus.
+let speedSelector = null
+game.on('frame', () => speedSelector?.update({ speed: game.state.speed }))
+
 /** Écran d'accueil monté, ou null hors de `'home'`. */
 let home = null
 /** Écran de choix du jardin monté, ou null hors de `'levels'`. */
 let levelSelect = null
 /** Niveau en cours et tous ses systèmes, ou null hors de `'game'`. */
 let session = null
+/** Juice de la session en cours, ou null hors niveau : les abonnements ci-dessous le lisent. */
+let juice = null
+
+// Juice des trois moments d'intégration (#149) : poser une tour, encaisser au cœur,
+// terminer la partie. Les noms dédiés s'ajoutent aux événements déjà émis par les
+// systèmes, sans les remplacer : le son et les playtests continuent de les écouter.
+game.on('tower-placed', (event) => juice?.spawn('towerPlaced', event))
+game.on('core-hit', (event) => juice?.spawn('heartDamage', event))
+game.on('run-end', (event) => {
+  if (event.outcome === 'victory') juice?.spawn('victory', event)
+})
 
 /** Progression au format attendu par `createLevelSelect`. */
 function selectProgress() {
   return { unlocked: game.state.unlocked, completed: game.state.progress.completed }
-}
-
-/**
- * Bouton « Retour » du niveau : le HUD du niveau n'en porte pas, l'intégration le
- * place sous ce HUD, à l'écart du chemin et des contrôles.
- * @returns {HTMLButtonElement}
- */
-function createBackButton() {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'level-select__button level-select__button--back'
-  button.dataset.action = 'back'
-  button.textContent = t('game.back')
-  button.style.position = 'absolute'
-  button.style.left = 'calc(env(safe-area-inset-left, 0px) + clamp(8px, 2vw, 20px))'
-  button.style.top = 'calc(env(safe-area-inset-top, 0px) + clamp(104px, 14vh, 128px))'
-  button.style.zIndex = '5'
-  button.style.pointerEvents = 'auto'
-  button.addEventListener('click', showHome)
-  return button
 }
 
 /** Détruit l'écran courant de la liste des jardins. */
@@ -177,15 +200,21 @@ function closeLevelSelect() {
  */
 function stopLevel() {
   if (!session) return
-  const { level, hud, back, towerBar, towers, waveHud, waves } = session
+  const { level, hud, highBar, towerBar, towers, waveHud, waves } = session
   session = null
+  speedSelector?.destroy()
+  speedSelector = null
   waveHud.destroy()
   waves.dispose()
-  back.remove()
+  highBar.destroy()
   towerBar.destroy()
   towers.dispose()
   hud.destroy()
   level.dispose()
+  juice = null
+  // Quitter le niveau ne laisse pas de facteur de vitesse derrière soi : le prochain
+  // jardin démarre à ×1, et les menus retrouvent le sélecteur neutre.
+  game.setSpeed(1)
   delete game.state.level
   delete game.towers
 }
@@ -197,6 +226,8 @@ function showHome() {
   home?.destroy()
   game.state.screen = 'home'
   game.state.campaign = null
+  // Chaque retour à l'accueil sonne la cloche, même sans geste supplémentaire.
+  audio.play('home')
   home = createHomeScreen(ui, { onOpen: openCampaign })
   home.update({ progress: game.state.progress })
 }
@@ -204,13 +235,15 @@ function showHome() {
 /**
  * Ouvre la liste des jardins d'une campagne `available` ;
  * une campagne indisponible ne change rien à l'écran.
+ * L'appel depuis le jeu, après `stopLevel()`, remplace la liste sans rechargement.
  * @param {string} campaignId
  */
 function openCampaign(campaignId) {
   const campaign = findCampaign(campaignId)
-  if (game.state.screen !== 'home' || !campaign || campaign.available !== true) return
+  if (!campaign || campaign.available !== true) return
   home?.destroy()
   home = null
+  closeLevelSelect()
   game.state.screen = 'levels'
   game.state.campaign = campaign.id
   levelSelect = createLevelSelect(ui, {
@@ -223,14 +256,31 @@ function openCampaign(campaignId) {
 }
 
 /**
+ * Ferme le niveau et rouvre la liste de la campagne en cours, progression à jour,
+ * sans rechargement de page : la victoire y est déjà enregistrée.
+ */
+function showLevels() {
+  const campaignId = game.state.campaign
+  stopLevel()
+  closeLevelSelect()
+  openCampaign(campaignId)
+}
+
+/**
  * Monte le niveau demandé : décor, caméra, HUD, tours, vagues.
  * `state.level.id` porte l'id du jardin, `mapId` celui de la carte assemblée.
  * @param {{ campaign: object, level: object }} entry jardin de `CAMPAIGNS` retenu
  * @param {object} difficulty profil de `DIFFICULTIES`
  */
 function mountLevel({ campaign, level: entry }, difficulty) {
+  // Chaque jardin s'ouvre à vitesse réelle, quel que soit le facteur du précédent.
+  game.setSpeed(1)
+  speedSelector = createSpeedSelector(ui, { onSelect: (speed) => game.setSpeed(speed) })
+  speedSelector.update({ speed: game.state.speed })
   const map = MAPS.get(entry.map) ?? LEVEL_1
   const level = createLevel(game, { level: map })
+  // Le juice du niveau reçoit les tirs, les morts et les impacts du système de vagues.
+  juice = level.juice
   game.state.level.id = entry.id
   game.state.level.mapId = map.id
   game.state.screen = 'game'
@@ -238,9 +288,10 @@ function mountLevel({ campaign, level: entry }, difficulty) {
   game.state.difficulty = difficulty.id
   game.state.waveMultiplier = difficulty.multiplier
 
+  // Barre haute montée avant les autres HUD : le retour aux jardins et la sève
+  // occupent le haut de l'écran, le HUD du niveau se place en dessous.
+  const highBar = createHighBar(ui, { onBack: showHome })
   const hud = createLevelHud(ui, { level: map })
-  const back = createBackButton()
-  ui.append(back)
 
   let towerBar
   /** Nombre de tours déjà posées : une pose de plus, et une seule, déclenche le son. */
@@ -250,27 +301,50 @@ function mountLevel({ campaign, level: entry }, difficulty) {
     if (placed > placedTowers && game.state.lastAction === 'placed') audio.play('plant')
     placedTowers = placed
     towerBar?.update(game.state)
+    highBar.update(game.state)
   }
   const towers = createTowerSystem(game, { level: map, onChange: onTowersChange })
   towerBar = createTowerBar(ui, {
     towers: TOWERS,
     onSelect: (type) => towers.selectType(type),
     onUpgrade: (id) => towers.upgrade(id),
-    onToggle: () => towers.toggleBar(),
   })
   towerBar.update(game.state)
+  // `createTowerSystem` pose la sève de départ dans l'état : la barre la lit après lui.
+  highBar.update(game.state)
 
   // `waves.restart()` remet aussi les tours à zéro : le système lui est exposé ici.
   game.towers = towers
 
-  const waveHud = createWaveHud(ui, { onRestart: () => waves.restart() })
-  const waves = createWaveSystem(game, {
-    level: map,
-    onChange: () => waveHud.update(game.state),
-    onEnd: () => waveHud.update(game.state),
+  const waveHud = createWaveHud(ui, {
+    onRestart: () => {
+      // « Rejouer » repart à vitesse réelle : aucune cadence accélérée n'est conservée.
+      game.setSpeed(1)
+      waves.restart()
+    },
+    onNext: () => goNextLevel(),
+    onExit: () => showLevels(),
   })
 
-  session = { level, hud, back, towerBar, towers, waveHud, waves }
+  /**
+   * Tout changement de vague, et la fin de partie : la victoire est enregistrée
+   * avant que le HUD n'affiche la modale de fin, donc sans dépendre d'un clic.
+   * `completeLevel` est idempotent : l'appel de `onChange` puis celui de `onEnd`
+   * n'écrivent qu'une fois.
+   */
+  const updateWaves = () => {
+    if (game.state.run.outcome === 'victory') completeLevel()
+    waveHud.update(game.state)
+  }
+
+  const waves = createWaveSystem(game, {
+    level: map,
+    juice: level.juice,
+    onChange: updateWaves,
+    onEnd: updateWaves,
+  })
+
+  session = { level, hud, highBar, towerBar, towers, waveHud, waves }
 }
 
 /**
@@ -289,19 +363,54 @@ function startLevel(levelId, difficultyId) {
   mountLevel(found, difficulty)
 }
 
-// Premier geste (clic ou touche) : le contexte Web Audio peut démarrer, puis la nappe.
+/**
+ * Monte le jardin suivant de la campagne en cours, directement, sans repasser par
+ * l'accueil : l'URL suit le nouveau jardin. Dernier jardin (ou état incomplet) :
+ * retour à la liste des jardins.
+ */
+function goNextLevel() {
+  if (game.state.screen !== 'game') return
+  const current = findLevel(game.state.level?.id)
+  if (!current) return
+  const next = current.campaign.levels[current.index + 1]
+  const difficultyId = game.state.difficulty
+  if (!next || !difficultyId) {
+    showLevels()
+    return
+  }
+  history.replaceState(null, '', `?niveau=${next.id}&difficulty=${difficultyId}`)
+  startLevel(next.id, difficultyId)
+}
+
+// Premier geste (clic ou touche) : le contexte Web Audio démarre, la cloche d'accueil
+// sonne une fois, puis la nappe.
 let audioUnlocked = false
 function unlockAudio() {
   if (audioUnlocked) return
   audioUnlocked = true
   audio.unlock().then((ready) => {
     if (!ready) return
+    audio.play('home')
     audio.startAmbience()
     audioToggle.update(audio.getSnapshot())
   })
 }
 addEventListener('pointerdown', unlockAudio, { once: true })
 addEventListener('keydown', unlockAudio, { once: true })
+
+// Retour d'onglet : le navigateur suspend Web Audio en arrière-plan. `resume()` le
+// réveille sans nouvel appui, puis la nappe reprend si elle tournait avant le masquage.
+let ambienceWasRunning = false
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    ambienceWasRunning = audio.getSnapshot().ambienceRunning
+    return
+  }
+  audio.resume().then((ready) => {
+    if (ready && ambienceWasRunning) audio.startAmbience()
+    audioToggle.update(audio.getSnapshot())
+  })
+})
 
 /**
  * Marque le jardin courant comme terminé, met à jour la progression et les
@@ -319,7 +428,30 @@ function completeLevel() {
   return saved
 }
 
+/**
+ * Rectangles px CSS des blocs du HUD du niveau, recalculés à chaque appel :
+ * le playtest vérifie les cibles et l'absence de chevauchement. Chaque entrée vaut
+ * `null` si l'élément est absent ; sinon un objet simple `{ x, y, width, height }`,
+ * sérialisable tel quel par le playtest.
+ * @returns {{ highBar: {x: number, y: number, width: number, height: number}|null, waveHud: object|null, core: object|null, towerBar: object|null }}
+ */
+function measureUi() {
+  const measure = (selector) => {
+    const node = document.querySelector(selector)
+    if (!node) return null
+    const rect = node.getBoundingClientRect()
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+  }
+  return {
+    highBar: measure('.high-bar'),
+    waveHud: measure('.wave-hud'),
+    core: measure('.wave-hud__core'),
+    towerBar: measure('.tower-bar__panel'),
+  }
+}
+
 game.completeLevel = completeLevel
+game.measureUi = measureUi
 
 applyMeta()
 
